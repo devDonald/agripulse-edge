@@ -103,26 +103,32 @@ if st.session_state.get("f_raw"):
     st.session_state.f_img = Image.open(io.BytesIO(raw)).convert("RGB")
     st.image(st.session_state.f_img, use_container_width=True)
     if st.button("📸 CHECK MY LEAF", type="primary"):
-        with st.spinner("Checking…"):
-            try:
-                files = {"file": (st.session_state.get("f_name", "leaf.jpg"), raw, "image/jpeg")}
-                diag = requests.post(f"{BACKEND_URL}/api/v1/diagnose-edge",
-                                     files=files, timeout=120).json()
-                st.session_state.f_diag = diag
-                ctx = {"crop_name": diag.get("crop_name"),
-                       "disease_detected": diag.get("disease_detected")}
-                adv = requests.post(f"{BACKEND_URL}/api/v1/voice-advisory",
-                                    json={"query": f"My {ctx['crop_name']} leaf get problem, wetin I fit do?",
-                                          "language": lang_code, "diagnosis_context": ctx},
-                                    timeout=120).json()
-                st.session_state.f_adv = adv
-                aud = requests.post(f"{BACKEND_URL}/api/v1/voice-synthesize",
-                                    json={"text": adv.get("spoken_reply", "")[:350],
-                                          "language": lang_code}, timeout=60).content
-                st.session_state.f_audio = aud
-                st.rerun()
-            except Exception as e:
-                st.error(f"Wahala: {e}. Start backend first:\n`python3 -m uvicorn backend.main:app --port 8000`")
+        status_box = st.empty()
+        try:
+            status_box.info("🔍 Step 1/3: Running ExecuTorch leaf diagnosis...")
+            files = {"file": (st.session_state.get("f_name", "leaf.jpg"), raw, "image/jpeg")}
+            diag = requests.post(f"{BACKEND_URL}/api/v1/diagnose-edge",
+                                 files=files, timeout=120).json()
+            st.session_state.f_diag = diag
+            ctx = {"crop_name": diag.get("crop_name"),
+                   "disease_detected": diag.get("disease_detected")}
+            status_box.info("🗣️ Step 2/3: Formulating extension advice...")
+            adv = requests.post(f"{BACKEND_URL}/api/v1/voice-advisory",
+                                json={"query": f"My {ctx['crop_name']} leaf get problem, wetin I fit do?",
+                                      "language": lang_code, "diagnosis_context": ctx,
+                                      "model_id": "llama-3.2-3b-edge"},
+                                timeout=120).json()
+            st.session_state.f_adv = adv
+            status_box.info("🔊 Step 3/3: Synthesizing dialect voice note...")
+            aud = requests.post(f"{BACKEND_URL}/api/v1/voice-synthesize",
+                                json={"text": adv.get("spoken_reply", "")[:350],
+                                      "language": lang_code}, timeout=60).content
+            st.session_state.f_audio = aud
+            status_box.empty()
+            st.rerun()
+        except Exception as e:
+            status_box.empty()
+            st.error(f"Wahala: {e}. Start backend first:\n`python3 -m uvicorn backend.main:app --port 8000`")
 
 diag = st.session_state.f_diag
 if diag:
