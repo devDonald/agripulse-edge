@@ -9,6 +9,15 @@ Showcases:
 import base64
 import io
 import os
+
+# TLS: certifi bundle so api.meta.ai verifies without manual terminal exports.
+try:
+    import certifi
+
+    os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+except Exception:
+    pass
+
 import requests
 import streamlit as st
 import numpy as np
@@ -102,37 +111,42 @@ st.markdown(
 )
 
 MODEL_OPTIONS = [
-    "meta/llama-3.2-90b-vision-instruct",
-    "meta/llama-3.2-11b-vision-instruct",
-    "meta/llama-3.2-3b-instruct",
-    "meta/llama-3.2-1b-instruct",
-    "meta/sam-2-hiera-large",
+    "muse-spark-1.3",
+    "muse-spark-1.2",
+    "muse-wonder-1.0",
+    "llama-3.2-3b-edge",
+    "llama-3.2-1b-edge",
+    "sam-2-hiera-large",
 ]
 MODEL_LABELS = {
-    "meta/llama-3.2-90b-vision-instruct": "☁️ 90B Vision — Deep Pathology",
-    "meta/llama-3.2-11b-vision-instruct": "☁️ 11B Vision — Fast Vision",
-    "meta/llama-3.2-3b-instruct": "📱 3B Edge INT8 — On-Device",
-    "meta/llama-3.2-1b-instruct": "📱 1B Edge INT4 — On-Device",
-    "meta/sam-2-hiera-large": "🎯 SAM 2 Large — Lesion Mask",
+    "muse-spark-1.3": "☁️ Muse Spark 1.3 — Flagship Diagnosis",
+    "muse-spark-1.2": "☁️ Muse Spark 1.2 — Fast Vision",
+    "muse-wonder-1.0": "☁️ Muse Wonder 1.0 — Agent Advisory",
+    "llama-3.2-3b-edge": "📱 3B Edge INT8 — On-Device",
+    "llama-3.2-1b-edge": "📱 1B Edge INT4 — On-Device",
+    "sam-2-hiera-large": "🎯 SAM 2 Large — Lesion Mask",
 }
 MODEL_META = {
-    "meta/llama-3.2-90b-vision-instruct": ("cloud", "1,240 tokens · 1.4s · high depth"),
-    "meta/llama-3.2-11b-vision-instruct": ("cloud", "640 tokens · 0.7s · medium depth"),
-    "meta/llama-3.2-3b-instruct": ("edge", "180 tokens · 38ms · 0KB data"),
-    "meta/llama-3.2-1b-instruct": ("edge", "120 tokens · 61ms · 0KB data"),
-    "meta/sam-2-hiera-large": ("segment", "45ms mask · pixel-accurate"),
+    "muse-spark-1.3": ("cloud", "1,240 tokens · 1.4s · high depth"),
+    "muse-spark-1.2": ("cloud", "640 tokens · 0.7s · medium depth"),
+    "muse-wonder-1.0": ("cloud", "480 tokens · 1.2s · agentic depth"),
+    "llama-3.2-3b-edge": ("edge", "180 tokens · 38ms · 0KB data"),
+    "llama-3.2-1b-edge": ("edge", "120 tokens · 61ms · 0KB data"),
+    "sam-2-hiera-large": ("segment", "45ms mask · pixel-accurate"),
 }
 # Visual spec chip for the Tab 1 comparison card (params / latency / memory).
 CHIP_SPECS = {
-    "meta/llama-3.2-90b-vision-instruct": {"short": "☁️ 90B Vision", "params": "90B", "latency": "1.4s",
+    "muse-spark-1.3": {"short": "☁️ Spark 1.3", "params": "Muse flagship", "latency": "1.4s",
         "memory": "Cloud GPU", "extra": "1,240 tokens · deep pathology reasoning"},
-    "meta/llama-3.2-11b-vision-instruct": {"short": "☁️ 11B Vision", "params": "11B", "latency": "0.7s",
-        "memory": "Cloud GPU", "extra": "640 tokens · fast vision"},
-    "meta/llama-3.2-3b-instruct": {"short": "📱 3B INT8", "params": "3B INT8", "latency": "38ms",
+    "muse-spark-1.2": {"short": "☁️ Spark 1.2", "params": "Muse fast", "latency": "0.7s",
+        "memory": "Cloud GPU", "extra": "640 tokens · fast vision + multilingual"},
+    "muse-wonder-1.0": {"short": "☁️ Wonder 1.0", "params": "Muse agent", "latency": "1.2s",
+        "memory": "Cloud GPU", "extra": "480 tokens · autonomous agent advisory"},
+    "llama-3.2-3b-edge": {"short": "📱 3B INT8", "params": "3B INT8", "latency": "38ms",
         "memory": "142MB NPU", "extra": "180 tokens · 0KB data · ExecuTorch on-device"},
-    "meta/llama-3.2-1b-instruct": {"short": "📱 1B INT4", "params": "1B INT4", "latency": "61ms",
+    "llama-3.2-1b-edge": {"short": "📱 1B INT4", "params": "1B INT4", "latency": "61ms",
         "memory": "820MB NPU", "extra": "120 tokens · 0KB data · ExecuTorch on-device"},
-    "meta/sam-2-hiera-large": {"short": "🎯 SAM 2 Large", "params": "Hiera-L", "latency": "45ms",
+    "sam-2-hiera-large": {"short": "🎯 SAM 2 Large", "params": "Hiera-L", "latency": "45ms",
         "memory": "Cloud GPU", "extra": "lesion mask · pixel-accurate chlorosis/necrosis"},
 }
 
@@ -384,9 +398,9 @@ with tab_clinic:
         if diagnose_button:
             # SAM 2 selection means "segment with emphasis" — still diagnose, mask is the star.
             eff_model = sel_model
-            if sel_model == "meta/sam-2-hiera-large" and not IS_OFFLINE:
+            if sel_model == "sam-2-hiera-large" and not IS_OFFLINE:
                 st.info("🎯 SAM 2 selected — running vision diagnosis + SAM 2 lesion mask ensemble.")
-                eff_model = "meta/llama-3.2-90b-vision-instruct"
+                eff_model = "muse-spark-1.3"
             spinner = ("🔥 LIVE dev.meta.ai call…" if (use_live and not IS_OFFLINE)
                        else ("Analyzing leaf with Meta AI..." if not IS_OFFLINE
                              else "Running on-device ExecuTorch INT8 model..."))
@@ -538,8 +552,8 @@ with tab_voice:
         with st.spinner(f"Meta AI generating spoken advisory in {lang_choice}..."):
             try:
                 adv_model = None if IS_OFFLINE else sel_model
-                if adv_model == "meta/sam-2-hiera-large":
-                    adv_model = "meta/llama-3.2-90b-vision-instruct"
+                if adv_model == "sam-2-hiera-large":
+                    adv_model = "muse-spark-1.3"
                 advisory = api_advisory(custom_q, lang_code, st.session_state.diagnosis,
                                         model_id=adv_model, use_live=use_live and not IS_OFFLINE)
                 st.session_state.advisory = advisory

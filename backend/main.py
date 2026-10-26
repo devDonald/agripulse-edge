@@ -1,5 +1,14 @@
 """FastAPI entrypoint: diagnose + segment + voice-advisory + whatsapp webhook + edge benchmark."""
+import os
 from typing import Optional
+
+# TLS: use certifi bundle so api.meta.ai verifies on machines with bare OpenSSL (e.g. macOS py.org builds).
+try:
+    import certifi
+
+    os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+except Exception:
+    pass
 
 from fastapi import FastAPI, File, HTTPException, Query, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware

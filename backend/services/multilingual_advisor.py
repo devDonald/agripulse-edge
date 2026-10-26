@@ -19,7 +19,7 @@ META_API_URL = os.getenv(
     "META_API_URL", "https://api.meta.ai/v1/chat/completions"
 )
 META_API_KEY = os.getenv("META_API_KEY") or os.getenv("MODEL_API_KEY", "")
-META_MODEL = os.getenv("META_MODEL", "llama-3.2-90b-vision-instruct")
+META_MODEL = os.getenv("META_MODEL", "muse-spark-1.3")
 META_TIMEOUT = float(os.getenv("META_TIMEOUT", "60"))
 MOCK_MODE = os.getenv("MOCK_MODE", "false").lower() in ("1", "true", "yes")
 

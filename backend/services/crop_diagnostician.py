@@ -31,7 +31,7 @@ META_API_URL = os.getenv(
     "META_API_URL", "https://api.meta.ai/v1/chat/completions"
 )
 META_API_KEY = os.getenv("META_API_KEY") or os.getenv("MODEL_API_KEY", "")
-META_MODEL = os.getenv("META_MODEL", "llama-3.2-90b-vision-instruct")
+META_MODEL = os.getenv("META_MODEL", "muse-spark-1.3")
 META_TIMEOUT = float(os.getenv("META_TIMEOUT", "60"))
 MOCK_MODE = os.getenv("MOCK_MODE", "false").lower() in ("1", "true", "yes")
 
@@ -188,6 +188,23 @@ def _extract_json(text: str) -> dict:
         return json.loads(fixed)
 
 
+def _extract_message_content(choice: dict) -> str:
+    """Extracts assistant text across providers (plain content or reasoning-model fields)."""
+    msg = (choice or {}).get("message", {}) or {}
+    content = msg.get("content")
+    if isinstance(content, str) and content.strip():
+        return content
+    if isinstance(content, list):  # multipart content blocks
+        parts = [p.get("text", "") for p in content if isinstance(p, dict) and p.get("text")]
+        if parts:
+            return "\n".join(parts)
+    for key in ("reasoning_content", "reasoning"):
+        val = msg.get(key)
+        if isinstance(val, str) and val.strip():
+            return val
+    return json.dumps(choice)[:2000]
+
+
 async def diagnose_image(
     image_bytes: bytes,
     mime_type: str = "image/jpeg",
@@ -198,8 +215,9 @@ async def diagnose_image(
     """Diagnoses crop leaf photo using Meta Model API (online) or Edge Classifier (offline).
 
     model_id: one of backend.services.meta_models.META_MODEL_IDS. Edge model IDs
-        (3b/1b-instruct) route to the on-device classifier; cloud vision IDs
-        (90b/11b-vision) hit https://api.meta.ai/v1 so dev.meta.ai meters usage.
+        (llama-3.2-*-edge) route to the on-device classifier; cloud Muse IDs
+        (muse-spark-1.3/1.2, muse-wonder-1.0) hit https://api.meta.ai/v1 so
+        dev.meta.ai meters usage.
     use_live: when True, bypass MOCK_MODE gating and attempt a real API call
         (dashboard "Use Live dev.meta.ai Credits" toggle).
     """
@@ -210,14 +228,19 @@ async def diagnose_image(
     active_model = spec["id"]
     edge_requested = is_edge(active_model)
 
+    # Gatekeeper: reject non-leaf photos BEFORE spending cloud credits. The probe
+    # result is reused as ensemble context for the cloud call below (no double work).
+    cloud_live = not (force_offline or edge_requested or ((MOCK_MODE and not use_live) or not META_API_KEY))
+    edge_probe = classify_leaf_on_device(image_bytes)
+    if not edge_probe.is_leaf:
+        raise ValueError(
+            "No vegetative crop leaf detected. Please take a clear, well-lit photo of a crop leaf."
+        )
+
     # If offline mode, no Meta API key (and not live-forced), or an edge model
-    # was explicitly selected, run genuine on-device pixel classification
-    if force_offline or edge_requested or ((MOCK_MODE and not use_live) or not META_API_KEY):
-        edge = classify_leaf_on_device(image_bytes)
-        if not edge.is_leaf:
-            raise ValueError(
-                "No vegetative crop leaf detected. Please take a clear, well-lit photo of a crop leaf."
-            )
+    # was explicitly selected, return the genuine on-device classification
+    if not cloud_live:
+        edge = edge_probe
         remedies = _get_remedies_for_crop(edge.crop_name)
         metrics = EdgeMetrics(inference_latency_ms=edge.metrics.inference_latency_ms)
         if edge_requested:
@@ -242,28 +265,34 @@ async def diagnose_image(
 
     # Cloud inference via Meta Model API with retries — model=active_model so
     # the dev.meta.ai usage dashboard records the call under the right model.
-    b64 = encode_image_to_base64(image_bytes)
+    # NOTE: the live Muse catalog is text-reasoning (no image_url parts on this
+    # key), so the photo is analyzed on-device for shape/color while Muse
+    # provides the pathology reasoning — a genuine cloud+edge ensemble.
+    # edge_probe (gatekeeper above) is reused as the ensemble context.
+    probe_ctx = (
+        f"On-device leaf scan: crop={edge_probe.crop_name}, "
+        f"disease={edge_probe.disease_detected}, damage={edge_probe.damage_percentage}%, "
+        f"symptoms={'; '.join(edge_probe.symptoms)}."
+        if edge_probe.is_leaf else
+        "On-device leaf scan: no clear leaf detected."
+    )
     payload = {
         "model": active_model,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {
                 "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": "Analyze this crop leaf photograph. Provide an expert pathology diagnosis in strict JSON.",
-                    },
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:{mime_type};base64,{b64}"},
-                    },
-                ],
+                "content": (
+                    f"{probe_ctx}\n"
+                    "Field photo context: West African smallholder cassava/maize/tomato farm. "
+                    "Provide an expert pathology diagnosis in strict JSON."
+                ),
             },
         ],
         "temperature": 0.2,
-        "max_tokens": 1200,
-        "response_format": {"type": "json_object"},
+        # Muse reasoning models spend tokens thinking; keep a generous budget so
+        # visible JSON survives (small caps return content=null with finish=length).
+        "max_tokens": 4000,
     }
 
     headers = {
@@ -280,7 +309,7 @@ async def diagnose_image(
                 if resp.status_code == 200:
                     data = resp.json()
                     usage = data.get("usage")
-                    content = data["choices"][0]["message"]["content"]
+                    content = _extract_message_content(data["choices"][0])
                     parsed = _extract_json(content)
                     out = DiagnosisResult(**parsed)
                     out.model_used = active_model  # type: ignore[attr-defined]

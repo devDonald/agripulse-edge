@@ -29,8 +29,8 @@ with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
                        "sample_data", "maize_fall_armyworm.jpg"), "rb") as f:
     img = f.read()
 
-for mid in ["meta/llama-3.2-90b-vision-instruct", "meta/llama-3.2-3b-instruct",
-            "meta/llama-3.2-1b-instruct"]:
+for mid in ["muse-spark-1.3", "llama-3.2-3b-edge",
+            "llama-3.2-1b-edge"]:
     rr = c.post("/api/v1/diagnose", files={"file": ("m.jpg", img, "image/jpeg")},
                 params={"model_id": mid})
     d = rr.json() if rr.status_code == 200 else {}
@@ -40,7 +40,7 @@ for mid in ["meta/llama-3.2-90b-vision-instruct", "meta/llama-3.2-3b-instruct",
 
 r2 = c.post("/api/v1/voice-advisory",
             json={"query": "How I go prepare neem spray?", "language": "pidgin",
-                  "model_id": "meta/llama-3.2-11b-vision-instruct"})
+                  "model_id": "muse-spark-1.2"})
 check("advisory model_id=11b routes pidgin",
       r2.status_code == 200 and r2.json().get("detected_language") == "pidgin")
 
