@@ -23,13 +23,15 @@ API_URL = os.getenv("META_API_URL", "https://api.meta.ai/v1/chat/completions")
 API_KEY = os.getenv("MODEL_API_KEY") or os.getenv("META_API_KEY", "")
 
 TEXT_MODELS = [
-    "meta/llama-3.2-90b-vision-instruct",
-    "meta/llama-3.2-11b-vision-instruct",
-    "meta/llama-3.2-3b-instruct",
-    "meta/llama-3.2-1b-instruct",
+    "muse-spark-1.3",
+    "muse-spark-1.3-contributor",
+    "muse-spark-1.2",
+    "muse-spark-1.2-contributor",
+    "muse-spark-1.1",
+    "muse-wonder-1.0",
 ]
-# SAM 2 is a vision-segmentation endpoint, not chat: verify via backend catalog, not billed ping.
-SEG_MODELS = ["meta/sam-2-hiera-large"]
+# Specialist endpoints (not chat-completions): verified via model catalog, not billed ping.
+SEG_MODELS = ["sam-3.1", "muse-voice-transcribe-1.0", "muse-image-1.0"]
 
 PROMPT = (
     "You are an agronomist. Reply with exactly this JSON, no other text: "
@@ -57,9 +59,17 @@ def ping(model_id: str, timeout: int = 60) -> dict:
         usage = data.get("usage", {}) or {}
         content = ""
         try:
-            content = data["choices"][0]["message"]["content"]
+            msg = data["choices"][0]["message"]
+            content = msg.get("content") or ""
+            if not content:  # reasoning models: content may live in tool_calls/reasoning fields
+                for k in ("reasoning_content", "reasoning"):
+                    if msg.get(k):
+                        content = str(msg[k])[:120]
+                        break
+                if not content:
+                    content = json.dumps(data["choices"][0])[:120]
         except Exception:
-            pass
+            content = json.dumps(data)[:120]
         return {"model": model_id, "ok": True, "latency_ms": round(dt, 1),
                 "prompt_tokens": usage.get("prompt_tokens"), "completion_tokens": usage.get("completion_tokens"),
                 "total_tokens": usage.get("total_tokens"), "reply": content[:120]}
