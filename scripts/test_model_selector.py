@@ -23,7 +23,7 @@ def check(name, cond, extra=""):
 
 r = c.get("/api/v1/models")
 ids = [m["id"] for m in r.json().get("models", [])] if r.status_code == 200 else []
-check("GET /api/v1/models lists 5 Meta IDs", ids == META_MODEL_IDS, str(ids))
+check("GET /api/v1/models lists 6 Meta IDs", ids == META_MODEL_IDS, str(ids))
 
 with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                        "sample_data", "maize_fall_armyworm.jpg"), "rb") as f:

@@ -10,9 +10,10 @@ from typing import List, Optional
 
 import httpx
 from dotenv import load_dotenv
+from PIL import Image
 from pydantic import BaseModel, Field, field_validator
 
-from backend.services.edge_classifier import classify_leaf_on_device
+from backend.services.edge_classifier import _compute_image_features, classify_leaf_on_device
 from backend.services.meta_models import (
     DEFAULT_MODEL_ID,
     EDGE_MODEL_IDS,
@@ -269,6 +270,20 @@ async def diagnose_image(
     # key), so the photo is analyzed on-device for shape/color while Muse
     # provides the pathology reasoning — a genuine cloud+edge ensemble.
     # edge_probe (gatekeeper above) is reused as the ensemble context.
+    # The shape verdict is authoritative: a blade-shaped mask is maize even if
+    # yellow, a lobed mask is cassava. The cloud model may refine disease but
+    # MUST NOT contradict the crop — mismatches fall back to the probe below.
+    shape_note = ""
+    try:
+        _feats = _compute_image_features(Image.open(io.BytesIO(image_bytes)))
+        if _feats.get("is_leaf"):
+            shape_note = (
+                f" Measured leaf architecture: elongation={_feats.get('shape_elongation', 0):.1f}, "
+                f"lobes={_feats.get('shape_lobes', 0)}, "
+                f"parallel_veins={_feats.get('shape_parallel_veins', False)}."
+            )
+    except Exception:
+        pass
     probe_ctx = (
         f"On-device leaf scan: crop={edge_probe.crop_name}, "
         f"disease={edge_probe.disease_detected}, damage={edge_probe.damage_percentage}%, "
@@ -283,8 +298,10 @@ async def diagnose_image(
             {
                 "role": "user",
                 "content": (
-                    f"{probe_ctx}\n"
+                    f"{probe_ctx}{shape_note}\n"
                     "Field photo context: West African smallholder cassava/maize/tomato farm. "
+                    "The on-device crop verdict above is AUTHORITATIVE — return the SAME crop_name. "
+                    "You may refine disease_detected, symptoms, and damage, but NEVER change the crop. "
                     "Provide an expert pathology diagnosis in strict JSON."
                 ),
             },
@@ -312,6 +329,17 @@ async def diagnose_image(
                     content = _extract_message_content(data["choices"][0])
                     parsed = _extract_json(content)
                     out = DiagnosisResult(**parsed)
+                    # Crop guard: the cloud model never sees the photo, so if it
+                    # contradicts the shape-verified probe, trust the probe.
+                    if out.crop_name.strip().lower() != edge_probe.crop_name.strip().lower():
+                        logger.warning(
+                            f"Crop mismatch (cloud={out.crop_name} vs probe={edge_probe.crop_name}); "
+                            "keeping probe crop."
+                        )
+                        raise ValueError(
+                            f"Cloud crop '{out.crop_name}' contradicts on-device verdict "
+                            f"'{edge_probe.crop_name}'"
+                        )
                     out.model_used = active_model  # type: ignore[attr-defined]
                     out.live_call = True  # type: ignore[attr-defined]
                     if usage:
@@ -323,8 +351,8 @@ async def diagnose_image(
             await asyncio.sleep(0.5)
 
     logger.warning(f"Meta API call failed ({last_error}), falling back to on-device edge classification.")
-    # Graceful fallback to on-device edge classifier
-    edge = classify_leaf_on_device(image_bytes)
+    # Graceful fallback: reuse the gatekeeper probe (identical result, no double work)
+    edge = edge_probe
     remedies = _get_remedies_for_crop(edge.crop_name)
     return DiagnosisResult(
         crop_name=edge.crop_name,

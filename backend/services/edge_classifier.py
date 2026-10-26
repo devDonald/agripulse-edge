@@ -157,10 +157,15 @@ def _compute_image_features(img: Image.Image) -> dict:
     leaf_ratio = leaf_pixel_count / float(total_pixels)
 
     if leaf_ratio < 0.06:
-        return {
-            "is_leaf": False,
-            "leaf_ratio": leaf_ratio,
-        }
+        # Rotated/diagonal blades can dip just under the gate: give obvious
+        # vegetation one more chance before rejecting.
+        if leaf_ratio >= 0.035 and float(((G >= R * 0.9) & (H >= 25.0) & (H <= 95.0)).sum()) / float(total_pixels) > 0.03:
+            pass
+        else:
+            return {
+                "is_leaf": False,
+                "leaf_ratio": leaf_ratio,
+            }
 
     # Chlorosis (yellowing): H in [30, 75], high saturation and brightness
     chlorosis_mask = (
@@ -239,16 +244,21 @@ def classify_leaf_on_device(image_bytes: bytes) -> EdgeClassification:
     # shape_known=False when the mask covers ~the whole frame (tight macro crop):
     # then the outline is the photo rectangle and elongation/lobes are meaningless.
     shape_known = extent <= 0.95 and feats.get("leaf_ratio", 0.0) < 0.90
-    if not shape_known:
-        if pvein:
-            crop = "maize"  # parallel veins visible even in full-frame macros
-        elif chlor > 0.35 and compact > 2.0:
-            crop = "cassava"  # strict: extreme mosaic + complex lobe boundaries
+    # A blade-like mask is NEVER cassava/tomato no matter how yellow it is.
+    if elong > 3.0:
+        crop = "maize"
+    elif lobes >= 3:
+        crop = "cassava"
+    elif pvein:
+        crop = "maize"  # parallel veins visible even in full-frame macros
+    elif not shape_known:
+        # Tight macro: shape is the photo rectangle — only extreme mosaic + lobe
+        # boundary complexity may claim cassava; yellow alone NEVER does.
+        if chlor > 0.35 and compact > 2.0 and elong < 2.0:
+            crop = "cassava"
         else:
             crop = "tomato"
-    elif pvein or elong > 3.5 or (extent < 0.40 and elong > 2.0):
-        crop = "maize"
-    elif lobes >= 3 or (chlor > 0.25 and elong < 2.5 and compact > 1.6):
+    elif chlor > 0.35 and compact > 2.0 and elong < 2.0:
         crop = "cassava"
     else:
         crop = "tomato"
