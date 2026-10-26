@@ -161,11 +161,9 @@ st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/7/7b/Meta_Platf
 st.sidebar.header("📡 Connectivity Mode")
 conn_mode = st.sidebar.radio(
     "Select Operating Environment:",
-    [
-        "🌐 Online (Meta Model API + Cloud SAM 2)",
-        "✈️ Offline Edge (Airplane Mode — Llama 3.2 on ExecuTorch)",
-    ],
+    ("🌐 Cloud AI (Meta Model API + SAM 2)", "✈️ Offline Edge (ExecuTorch On-Device)"),
     index=1,
+    key="select_mode",
 )
 IS_OFFLINE = conn_mode.startswith("✈️")
 
