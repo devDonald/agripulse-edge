@@ -90,6 +90,8 @@ st.markdown(
     /* Buttons */
     .stButton>button[kind="primary"] { background: linear-gradient(135deg,#15803d,#22c55e);
       border: none; border-radius: 12px; font-weight: 800; box-shadow: 0 8px 20px rgba(34,197,94,.35); }
+    /* Compact buttons inside column grids (sample presets, quick questions) */
+    div[data-testid="column"] button { padding: 6px 8px !important; font-size: 0.85rem !important; }
     /* Phone mockup */
     .phone { background: #0b1410; border-radius: 34px; padding: 12px; box-shadow: 0 20px 50px rgba(0,0,0,.3); }
     .phone-screen { background: #e5ddd5 url('https://i.imgur.com/8Km9tLL.png'); background-size: cover;
@@ -243,33 +245,37 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-st.markdown('<div class="card"><h3>🧠 Active Meta AI Model</h3>'
-            '<div class="hint">Switch the Meta brain behind diagnosis + voice. Cloud calls bill live on dev.meta.ai.</div>',
-            unsafe_allow_html=True)
-cb1, cb2 = st.columns([1.5, 1])
-with cb1:
-    st.selectbox(
-        "Model switcher",
-        MODEL_OPTIONS,
-        index=0,
-        format_func=_fmt_model,
-        key="active_meta_model",
-        help="90B/11B Vision run in cloud · 3B/1B run on-device via ExecuTorch · SAM 2 segments lesions.",
+with st.container():
+    st.markdown(
+        '<div class="card" style="margin-bottom: 0px; border-bottom-left-radius: 0; border-bottom-right-radius: 0;">'
+        '<h3>🧠 Active Meta AI Model</h3>'
+        '<div class="hint">Switch the Meta brain behind diagnosis + voice. Cloud calls bill live on dev.meta.ai.</div>'
+        '</div>',
+        unsafe_allow_html=True,
     )
-with cb2:
-    st.markdown("<div style='height:30px'></div>", unsafe_allow_html=True)
-    st.checkbox(
-        "🔥 Use Live dev.meta.ai API Credits (Disable Mock)",
-        key="use_live_credits",
-        help="Forward requests to https://api.meta.ai/v1 with MODEL_API_KEY so tokens meter live. Falls back gracefully offline.",
-    )
+    with st.container(border=True):
+        cb1, cb2 = st.columns([1.5, 1])
+        with cb1:
+            st.selectbox(
+                "Model switcher",
+                MODEL_OPTIONS,
+                index=0,
+                format_func=_fmt_model,
+                key="active_meta_model",
+                label_visibility="collapsed",
+            )
+        with cb2:
+            st.checkbox(
+                "🔥 Use Live dev.meta.ai Credits",
+                key="use_live_credits",
+                help="Forward requests to https://api.meta.ai/v1 with MODEL_API_KEY.",
+            )
 sel_model = st.session_state.get("active_meta_model", MODEL_OPTIONS[0])
 use_live = st.session_state.get("use_live_credits", False)
 if IS_OFFLINE:
     st.caption("✈️ Offline Edge mode — on-device classifier runs regardless of selection; live billing paused.")
 elif use_live:
     st.caption(f"🔥 LIVE billing ON → `{sel_model}` on https://api.meta.ai/v1")
-st.markdown("</div>", unsafe_allow_html=True)
 
 # Initialize session states
 for key, default in {
