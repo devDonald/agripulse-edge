@@ -4,9 +4,12 @@
 //
 // Dynamic URL: call setBackendUrl('http://192.168.1.50:8000') from the app's
 // IP switcher — no source-code edits needed in the field.
-let currentBackendUrl = 'http://localhost:8000';
+let currentBackendUrl = 'http://192.168.0.115:8000'; // autodetected host LAN IP
+
 export const getBackendUrl = () => currentBackendUrl;
-export const setBackendUrl = (url) => { currentBackendUrl = String(url || '').replace(/\/$/, ''); };
+export const setBackendUrl = (url) => {
+  currentBackendUrl = String(url || '').replace(/\/$/, '');
+};
 // Back-compat alias for older imports.
 export const BACKEND_URL = currentBackendUrl;
 

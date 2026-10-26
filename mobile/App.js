@@ -147,7 +147,7 @@ export default function App() {
                     <Text style={s.modalCancelText}>Cancel</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={s.modalSave} onPress={() => {
-                    const v = (ipDraft || '').trim() || 'http://localhost:8000';
+                    const v = (ipDraft || '').trim() || 'http://192.168.0.115:8000';
                     setBackendUrl(v);
                     setBackendLabel(getBackendUrl());
                     setIpModal(false);
