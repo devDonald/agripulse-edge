@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, ValidationError
 from backend.services.crop_diagnostician import DiagnosisResult, diagnose_image
 from backend.services.leaf_segmenter import SegmentationResult, segment_leaf_damage
 from backend.services.llama_edge_runner import benchmark_on_device_inference, EXECUTORCH_CONFIGS
+from backend.services.meta_models import BY_ID, MODEL_CATALOG
 from backend.services.mobile_sync import get_history, save_scan, sync_batch
 from backend.services.multilingual_advisor import AdvisoryResponse, generate_advisory
 from backend.services.voice_synthesizer import synthesize_spoken_audio
@@ -56,6 +57,8 @@ class VoiceAdvisoryRequest(BaseModel):
     query: str = Field(..., min_length=2)
     language: str = Field(default="pidgin")
     diagnosis_context: Optional[dict] = None
+    model_id: Optional[str] = Field(default=None, description="Meta model ID override")
+    use_live: bool = Field(default=False, description="Bill this call on dev.meta.ai")
 
 
 class SynthesisRequest(BaseModel):
@@ -92,6 +95,12 @@ def _check_image(file: UploadFile, raw: bytes):
         raise HTTPException(413, "Image file too large (maximum 10MB).")
 
 
+@app.get("/api/v1/models")
+def list_models():
+    """Canonical Meta model catalog driving the dashboard selector (dev.meta.ai IDs)."""
+    return JSONResponse(content={"models": MODEL_CATALOG, "by_id": BY_ID})
+
+
 @app.post("/api/v1/diagnose", response_model=DiagnosisResult)
 async def diagnose(
     file: UploadFile = File(..., description="Crop leaf photo"),
@@ -99,13 +108,16 @@ async def diagnose(
         default=False,
         description="Simulate disconnected offline on-device ExecuTorch inference (0KB data)",
     ),
+    model_id: Optional[str] = Query(default=None, description="Meta model ID override"),
+    use_live: bool = Query(default=False, description="Bill this call on dev.meta.ai"),
 ):
     """Diagnoses crop leaf pathology and fuses SAM 2 lesion area measurement."""
     raw = await file.read()
     _check_image(file, raw)
 
     try:
-        result = await diagnose_image(raw, file.content_type, force_offline=force_offline)
+        result = await diagnose_image(raw, file.content_type, force_offline=force_offline,
+                                      model_id=model_id, use_live=use_live)
     except ValidationError as e:
         raise HTTPException(502, f"Model returned invalid schema: {e}")
     except ValueError as e:
@@ -152,7 +164,8 @@ async def segment(file: UploadFile = File(..., description="Crop leaf photo")):
 async def voice_advisory(req: VoiceAdvisoryRequest):
     """Multilingual voice/text advisory in Nigerian Pidgin, Hausa, Yoruba, or simple English."""
     try:
-        result = await generate_advisory(req.query, req.language, req.diagnosis_context)
+        result = await generate_advisory(req.query, req.language, req.diagnosis_context,
+                                         model_id=req.model_id, use_live=req.use_live)
     except ValueError as e:
         raise HTTPException(400, str(e))
     except RuntimeError as e:
