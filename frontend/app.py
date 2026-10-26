@@ -21,7 +21,7 @@ except Exception:
 import requests
 import streamlit as st
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageOps
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000").rstrip("/")
 SAMPLE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sample_data")
@@ -372,7 +372,8 @@ with tab_clinic:
                         with open(p, "rb") as f:
                             st.session_state.img_bytes = f.read()
                         st.session_state.img_name = fname
-                        st.session_state.orig_img = Image.open(io.BytesIO(st.session_state.img_bytes)).convert("RGB")
+                        raw_img = Image.open(io.BytesIO(st.session_state.img_bytes))
+                        st.session_state.orig_img = ImageOps.exif_transpose(raw_img).convert("RGB")
                         st.session_state.diagnosis = None
                         st.session_state.mask_img = None
                         st.rerun()
@@ -381,7 +382,8 @@ with tab_clinic:
         if uploader is not None:
             st.session_state.img_bytes = uploader.getvalue()
             st.session_state.img_name = uploader.name
-            st.session_state.orig_img = Image.open(io.BytesIO(st.session_state.img_bytes)).convert("RGB")
+            raw_img = Image.open(io.BytesIO(st.session_state.img_bytes))
+            st.session_state.orig_img = ImageOps.exif_transpose(raw_img).convert("RGB")
 
         if st.session_state.orig_img is not None:
             st.image(st.session_state.orig_img, caption=f"Selected: {st.session_state.img_name}",
@@ -448,7 +450,8 @@ with tab_clinic:
                 t1, t2 = st.tabs(["🎯 SAM 2 lesion map", "🖼️ Original photo"])
                 with t1:
                     opacity = st.slider("Overlay intensity", 0.0, 1.0, 0.70, 0.05)
-                    orig_resized = st.session_state.orig_img.resize(st.session_state.mask_img.size)
+                    orig_resized = st.session_state.orig_img.resize(
+                        st.session_state.mask_img.size, Image.Resampling.BILINEAR)
                     blended = Image.blend(orig_resized, st.session_state.mask_img, opacity)
                     st.image(blended, use_container_width=True,
                              caption=f"Yellow = chlorosis · Red = necrosis · {seg.get('method_used', 'SAM 2')}")
@@ -478,6 +481,27 @@ with tab_clinic:
                 for idx, r in enumerate(diag.get("organic_remedies", []), 1):
                     st.markdown(f'<div class="remedy"><b>{idx}. {r.get("title")}</b><br>{r.get("preparation")}</div>',
                                 unsafe_allow_html=True)
+
+            # Treatment slip: copy/download for SMS/WhatsApp distribution by extension agents
+            adv_ctx = st.session_state.get("advisory") or {}
+            _prev = adv_ctx.get("preventative_cultural_practices") or []
+            _lines = [
+                "AGRIPULSE EDGE — FARMER TREATMENT SLIP",
+                f"Crop: {str(diag.get('crop_name', '-')).title()}",
+                f"Disease: {diag.get('disease_detected', '-')}",
+                f"Severity: {sev.upper()} | Measured damage: {dmg}%",
+                "",
+                "3 ORGANIC REMEDIES:",
+            ]
+            for idx, r in enumerate(diag.get("organic_remedies", [])[:3], 1):
+                _lines += [f"{idx}. {r.get('title')}", f"   {r.get('preparation')}"]
+            if _prev:
+                _lines += ["", "PREVENT NEXT TIME:"] + [f"- {p}" for p in _prev]
+            _slip = "\n".join(_lines)
+            st.text_area("📋 Treatment slip (copy for SMS/WhatsApp)", _slip, height=180)
+            st.download_button("📋 Copy / Download Treatment Slip", _slip,
+                               file_name="treatment_slip.txt", mime="text/plain",
+                               use_container_width=True)
 
             # Provenance: which Meta model actually produced this report
             mu = diag.get("model_used")
@@ -625,6 +649,30 @@ with tab_whatsapp:
                 st.session_state.wa_chat.append({"sender": "bot", "text": reply})
             except Exception as e:
                 st.session_state.wa_chat.append({"sender": "bot", "text": f"Error: {e}"})
+
+        if st.button("📸 Send Sample Leaf Photo as WhatsApp Attachment", use_container_width=True):
+            st.session_state.wa_chat.append({"sender": "user", "text": "📸 [Leaf photo: sample_leaf_01] Doctor, look my crop"})
+            payload = {
+                "object": "whatsapp_business_account",
+                "entry": [{
+                    "changes": [{
+                        "value": {
+                            "messages": [{
+                                "from": "+2348012345678",
+                                "type": "image",
+                                "image": {"id": "sample_leaf_01", "caption": "Doctor, look my crop"}
+                            }]
+                        }
+                    }]
+                }]
+            }
+            try:
+                res = requests.post(f"{BACKEND_URL}/api/v1/whatsapp/webhook", json=payload, timeout=20)
+                reply = res.json().get("reply", "Photo received.")
+                st.session_state.wa_chat.append({"sender": "bot", "text": reply})
+            except Exception as e:
+                st.session_state.wa_chat.append({"sender": "bot", "text": f"Error: {e}"})
+            st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
 
     with phone_col:

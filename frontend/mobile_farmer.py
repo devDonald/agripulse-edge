@@ -7,6 +7,7 @@ Run alongside the API:
 import base64
 import io
 import os
+from datetime import datetime
 
 import requests
 import streamlit as st
@@ -46,9 +47,18 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.markdown('<div class="pill">⚡ 100% Offline Mode (0KB Data Used)</div>', unsafe_allow_html=True)
 st.markdown('<div class="big-title">AgriPulse 🌿</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub">Snap sick leaf → hear voice advice. No reading needed.</div>', unsafe_allow_html=True)
+
+st.session_state.setdefault("f_history", [])
+
+# Connectivity pulse: 1.5s health probe decides the status pill
+try:
+    requests.get(f"{BACKEND_URL}/health", timeout=1.5)
+    st.markdown('<div class="pill" style="background:#15803d">🟢 Online Mode (Auto-Sync Ready)</div>',
+                unsafe_allow_html=True)
+except Exception:
+    st.markdown('<div class="pill">⚡ 100% Offline Mode (0KB Data Used)</div>', unsafe_allow_html=True)
 
 if "f_diag" not in st.session_state:
     st.session_state.update(f_diag=None, f_adv=None, f_audio=None, f_img=None)
@@ -108,4 +118,25 @@ if diag:
         st.markdown(f'<div class="recipe"><b>{["🌿", "🪵", "🧼"][i-1]} {i}. {r.get("title")}</b><br>'
                     f'{r.get("preparation")}</div>', unsafe_allow_html=True)
     if st.button("💾 SAVE AM FOR LATER"):
+        _top = (diag.get("organic_remedies") or [{}])[0]
+        st.session_state.f_history.append({
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "crop": str(diag.get("crop_name", "-")).title(),
+            "disease": diag.get("disease_detected", "-"),
+            "severity": str(diag.get("severity", "low")).upper(),
+            "damage": diag.get("damage_percentage", 0),
+            "remedy": _top.get("title", "-"),
+            "preparation": _top.get("preparation", ""),
+        })
         st.success("Saved ✅ E go sync when network show.")
+
+with st.expander("📂 My Saved Field Scans (Offline History)", expanded=False):
+    if not st.session_state.f_history:
+        st.caption("No saved scans yet — diagnose a leaf and tap SAVE AM.")
+    for h in reversed(st.session_state.f_history):
+        st.markdown(
+            f'<div class="recipe"><b>🕒 {h["timestamp"]} · {h["crop"]} · '
+            f'{h["disease"]}</b><br>Severity: {h["severity"]} · Damage: {h["damage"]}%'
+            f'<br>🌿 {h["remedy"]}<br><small>{h["preparation"]}</small></div>',
+            unsafe_allow_html=True,
+        )

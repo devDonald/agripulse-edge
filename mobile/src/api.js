@@ -1,18 +1,25 @@
 // Backend API client + auto-sync of the offline queue.
 // Works with: POST /api/v1/diagnose-edge, /api/v1/voice-advisory,
 //             /api/v1/voice-synthesize, /api/v1/mobile/sync-batch
-export const BACKEND_URL = 'http://YOUR_LAPTOP_IP:8000'; // <-- phone + laptop on same Wi-Fi
+//
+// Dynamic URL: call setBackendUrl('http://192.168.1.50:8000') from the app's
+// IP switcher — no source-code edits needed in the field.
+let currentBackendUrl = 'http://localhost:8000';
+export const getBackendUrl = () => currentBackendUrl;
+export const setBackendUrl = (url) => { currentBackendUrl = String(url || '').replace(/\/$/, ''); };
+// Back-compat alias for older imports.
+export const BACKEND_URL = currentBackendUrl;
 
 export async function diagnoseLeaf(photoUri, language = 'pidgin') {
   const form = new FormData();
   form.append('file', { uri: photoUri, name: 'leaf.jpg', type: 'image/jpeg' });
-  const res = await fetch(`${BACKEND_URL}/api/v1/diagnose-edge`, { method: 'POST', body: form });
+  const res = await fetch(`${getBackendUrl()}/api/v1/diagnose-edge`, { method: 'POST', body: form });
   if (!res.ok) throw new Error(`diagnose failed (${res.status})`);
   return res.json();
 }
 
 export async function fetchAdvisory(query, language, diagnosisContext) {
-  const res = await fetch(`${BACKEND_URL}/api/v1/voice-advisory`, {
+  const res = await fetch(`${getBackendUrl()}/api/v1/voice-advisory`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ query, language, diagnosis_context: diagnosisContext || null }),
@@ -22,7 +29,7 @@ export async function fetchAdvisory(query, language, diagnosisContext) {
 }
 
 export async function fetchVoiceAudio(text, language) {
-  const res = await fetch(`${BACKEND_URL}/api/v1/voice-synthesize`, {
+  const res = await fetch(`${getBackendUrl()}/api/v1/voice-synthesize`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text, language }),
@@ -44,7 +51,7 @@ export async function syncQueue(queue, markSynced, farmerId = 'field-phone-1') {
       latitude: s.latitude ?? null, longitude: s.longitude ?? null, timestamp: s.timestamp,
     })),
   };
-  const res = await fetch(`${BACKEND_URL}/api/v1/mobile/sync-batch`, {
+  const res = await fetch(`${getBackendUrl()}/api/v1/mobile/sync-batch`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error(`sync failed (${res.status})`);

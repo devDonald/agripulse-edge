@@ -2,11 +2,11 @@
 // Screen 1: Camera/Home (giant Snap button + offline pill).
 // Screen 2: Instant Diagnosis & Audio (big icon + dialect voice + 3 recipe cards).
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Image, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Audio } from 'expo-av';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Network from 'expo-network';
-import { BACKEND_URL, diagnoseLeaf, fetchAdvisory, fetchVoiceAudio, syncQueue } from './src/api';
+import { diagnoseLeaf, fetchAdvisory, fetchVoiceAudio, getBackendUrl, setBackendUrl, syncQueue } from './src/api';
 import { LANGUAGES, RECIPE_ICONS, STRINGS, simpleName } from './src/language';
 import * as queue from './src/offlineQueue';
 
@@ -24,6 +24,9 @@ export default function App() {
   const [pendingN, setPendingN] = useState(0);
   const [sound, setSound] = useState(null);
   const [permission, requestPermission] = useCameraPermissions();
+  const [ipModal, setIpModal] = useState(false);
+  const [ipDraft, setIpDraft] = useState('');
+  const [backendLabel, setBackendLabel] = useState(getBackendUrl());
   const camRef = useRef(null);
   const t = STRINGS[lang];
 
@@ -128,7 +131,33 @@ export default function App() {
           <TouchableOpacity style={s.snap} onPress={onSnap} disabled={busy}>
             {busy ? <ActivityIndicator color="#fff" size="large" /> : <Text style={s.snapText}>{t.snap}</Text>}
           </TouchableOpacity>
-          <Text style={s.backend}>Backend: {BACKEND_URL}</Text>
+          {/* Tap backend label to switch LAN IP without editing source code */}
+          <TouchableOpacity onPress={() => { setIpDraft(getBackendUrl()); setIpModal(true); }}>
+            <Text style={s.backend}>🔧 Backend: {backendLabel} (tap to change)</Text>
+          </TouchableOpacity>
+          <Modal visible={ipModal} transparent animationType="slide" onRequestClose={() => setIpModal(false)}>
+            <View style={s.modalWrap}>
+              <View style={s.modalBox}>
+                <Text style={s.modalTitle}>Laptop LAN address</Text>
+                <Text style={s.modalHint}>Same Wi-Fi, e.g. http://192.168.1.50:8000</Text>
+                <TextInput style={s.modalInput} value={ipDraft} onChangeText={setIpDraft}
+                  placeholder="http://192.168.1.50:8000" autoCapitalize="none" autoCorrect={false} />
+                <View style={s.modalRow}>
+                  <TouchableOpacity style={s.modalCancel} onPress={() => setIpModal(false)}>
+                    <Text style={s.modalCancelText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={s.modalSave} onPress={() => {
+                    const v = (ipDraft || '').trim() || 'http://localhost:8000';
+                    setBackendUrl(v);
+                    setBackendLabel(getBackendUrl());
+                    setIpModal(false);
+                  }}>
+                    <Text style={s.modalSaveText}>Save</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </Modal>
         </View>
       ) : (
         <ScrollView contentContainerStyle={s.result}>
@@ -179,6 +208,7 @@ const s = StyleSheet.create({
   snap: { backgroundColor: LIME, borderRadius: 24, padding: 26, marginTop: 16, alignItems: 'center', elevation: 4 },
   snapText: { color: '#052e16', fontSize: 26, fontWeight: '900' },
   backend: { textAlign: 'center', color: '#888', marginTop: 8, fontSize: 12 },
+  modalWrap: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', padding: 24 },
   result: { padding: 16, paddingBottom: 40 },
   thumb: { width: '100%', height: 200, borderRadius: 16 },
   dxBox: { backgroundColor: GREEN, borderRadius: 20, padding: 20, marginTop: 12, alignItems: 'center' },
@@ -195,5 +225,14 @@ const s = StyleSheet.create({
   save: { backgroundColor: GREEN, borderRadius: 20, padding: 20, marginTop: 14, alignItems: 'center' },
   saveText: { color: '#fff', fontSize: 20, fontWeight: '900' },
   back: { textAlign: 'center', color: GREEN, fontWeight: '800', marginTop: 12, fontSize: 16 },
+  modalBox: { backgroundColor: '#fff', borderRadius: 18, padding: 18 },
+  modalTitle: { fontSize: 20, fontWeight: '900', color: GREEN },
+  modalHint: { color: '#666', marginVertical: 6 },
+  modalInput: { borderWidth: 2, borderColor: GREEN, borderRadius: 12, padding: 12, fontSize: 16 },
+  modalRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 12 },
+  modalCancel: { padding: 12, marginRight: 8 },
+  modalCancelText: { color: '#666', fontWeight: '800', fontSize: 16 },
+  modalSave: { backgroundColor: GREEN, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 22 },
+  modalSaveText: { color: '#fff', fontWeight: '900', fontSize: 16 },
 });
 

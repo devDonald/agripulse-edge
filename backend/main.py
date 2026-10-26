@@ -53,12 +53,7 @@ def health():
         "version": "1.3.0",
         "meta_ai_ready": True,
         "offline_edge_ready": True,
-        "models_integrated": [
-            "Meta Llama-3.2-90B-Vision (Cloud API)",
-            "Meta Llama-3.2-3B-Instruct (ExecuTorch On-Device Edge)",
-            "Meta Llama-3.2-1B-Instruct (ExecuTorch On-Device Edge)",
-            "Meta Segment Anything 2 (SAM 2 Lesion Masking)",
-        ],
+        "models_integrated": [m["label"] for m in MODEL_CATALOG],
     }
 
 
