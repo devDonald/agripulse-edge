@@ -151,15 +151,12 @@ if diag:
         st.markdown(f'<div class="recipe"><b>{["🌿", "🪵", "🧼"][i-1]} {i}. {r.get("title")}</b><br>'
                     f'{r.get("preparation")}</div>', unsafe_allow_html=True)
     if st.button("💾 SAVE AM FOR LATER"):
-        _top = (diag.get("organic_remedies") or [{}])[0]
         st.session_state.f_history.append({
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
-            "crop": str(diag.get("crop_name", "-")).title(),
-            "disease": diag.get("disease_detected", "-"),
-            "severity": str(diag.get("severity", "low")).upper(),
-            "damage": diag.get("damage_percentage", 0),
-            "remedy": _top.get("title", "-"),
-            "preparation": _top.get("preparation", ""),
+            "disease": diag.get("disease_detected"),
+            "crop": diag.get("crop_name"),
+            "damage": diag.get("damage_percentage"),
+            "remedy": (diag.get("organic_remedies") or [{}])[0].get("title", "Neem Spray"),
         })
         st.success("Saved ✅ E go sync when network show.")
 
@@ -167,9 +164,12 @@ with st.expander("📂 My Saved Field Scans (Offline History)", expanded=False):
     if not st.session_state.f_history:
         st.caption("No saved scans yet — diagnose a leaf and tap SAVE AM.")
     for h in reversed(st.session_state.f_history):
+        _ts = h.get("timestamp", "")
+        _sev = f" · {h['severity']}" if h.get("severity") else ""
+        _prep = f"<br><small>{h['preparation']}</small>" if h.get("preparation") else ""
         st.markdown(
-            f'<div class="recipe"><b>🕒 {h["timestamp"]} · {h["crop"]} · '
-            f'{h["disease"]}</b><br>Severity: {h["severity"]} · Damage: {h["damage"]}%'
-            f'<br>🌿 {h["remedy"]}<br><small>{h["preparation"]}</small></div>',
+            f'<div class="recipe"><b>🕒 {_ts} · {h.get("crop", "-")} · '
+            f'{h.get("disease", "-")}</b><br>Damage: {h.get("damage", 0)}%{_sev}'
+            f'<br>🌿 {h.get("remedy", "Neem Spray")}{_prep}</div>',
             unsafe_allow_html=True,
         )
