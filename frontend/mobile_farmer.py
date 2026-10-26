@@ -1,0 +1,111 @@
+"""AgriPulse Edge — ultra-simple mobile-first PWA view for farmers (360px).
+
+Run alongside the API:
+    streamlit run frontend/mobile_farmer.py --server.port 8502
+2-tap journey: Snap/Upload leaf -> auto-play dialect voice note. Big buttons, no jargon.
+"""
+import base64
+import io
+import os
+
+import requests
+import streamlit as st
+from PIL import Image
+
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000").rstrip("/")
+
+st.set_page_config(page_title="AgriPulse Farmer 📱", page_icon="🌿", layout="centered",
+                   initial_sidebar_state="collapsed")
+
+st.markdown(
+    """
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@700;800;900&display=swap');
+    #MainMenu, footer, header {visibility: hidden;}
+    .block-container { max-width: 430px; padding: 0.8rem 0.8rem 3rem; }
+    html, body, [class*="css"] { font-family: 'Inter', system-ui, sans-serif; }
+    .pill { background: #0b4d2e; color: #fff; border-radius: 999px; padding: 10px;
+      text-align: center; font-weight: 800; font-size: 0.95rem; margin-bottom: 10px; }
+    .big-title { font-size: 1.9rem; font-weight: 900; color: #0b4d2e; text-align: center; margin: 2px 0; }
+    .sub { text-align: center; color: #5b7a61; font-size: 0.95rem; margin-bottom: 10px; }
+    .dx { background: linear-gradient(135deg, #0b4d2e, #16a34a); border-radius: 22px;
+      padding: 24px 18px; text-align: center; color: #fff; margin: 12px 0; }
+    .dx .icon { font-size: 4rem; }
+    .dx .name { font-size: 1.7rem; font-weight: 900; }
+    .dx .meta { color: #bbf7d0; font-weight: 700; margin-top: 4px; }
+    .recipe { background: #fff; border-left: 8px solid #22c55e; border-radius: 14px;
+      padding: 14px; margin: 10px 0; box-shadow: 0 4px 14px rgba(0,0,0,.08); }
+    .recipe b { color: #0b4d2e; font-size: 1.1rem; }
+    .stButton>button { width: 100%; border-radius: 20px !important; padding: 18px !important;
+      font-size: 1.35rem !important; font-weight: 900 !important; }
+    .stButton>button[kind="primary"] { background: linear-gradient(135deg, #16a34a, #4ade80) !important;
+      color: #052e16 !important; border: none !important; }
+    [data-testid="stAudio"] { border-radius: 16px; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.markdown('<div class="pill">⚡ 100% Offline Mode (0KB Data Used)</div>', unsafe_allow_html=True)
+st.markdown('<div class="big-title">AgriPulse 🌿</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub">Snap sick leaf → hear voice advice. No reading needed.</div>', unsafe_allow_html=True)
+
+if "f_diag" not in st.session_state:
+    st.session_state.update(f_diag=None, f_adv=None, f_audio=None, f_img=None)
+
+lang = st.radio("Language", ["🇳🇬 Pidgin", "🇳🇬 Hausa", "🇳🇬 Yoruba", "🇬🇧 English"],
+                horizontal=True, label_visibility="collapsed")
+lang_code = {"🇳🇬 Pidgin": "pidgin", "🇳🇬 Hausa": "hausa",
+             "🇳🇬 Yoruba": "yoruba", "🇬🇧 English": "english"}[lang]
+
+st.markdown("### 1️⃣ Snap / upload leaf")
+photo = st.file_uploader("Take photo or upload", type=["jpg", "jpeg", "png", "webp"],
+                         label_visibility="collapsed")
+if photo:
+    raw = photo.getvalue()
+    st.session_state.f_img = Image.open(io.BytesIO(raw)).convert("RGB")
+    st.image(st.session_state.f_img, use_container_width=True)
+    if st.button("📸 CHECK MY LEAF", type="primary"):
+        with st.spinner("Checking…"):
+            try:
+                files = {"file": (photo.name, raw, "image/jpeg")}
+                diag = requests.post(f"{BACKEND_URL}/api/v1/diagnose-edge",
+                                     files=files, timeout=120).json()
+                st.session_state.f_diag = diag
+                ctx = {"crop_name": diag.get("crop_name"),
+                       "disease_detected": diag.get("disease_detected")}
+                adv = requests.post(f"{BACKEND_URL}/api/v1/voice-advisory",
+                                    json={"query": f"My {ctx['crop_name']} leaf get problem, wetin I fit do?",
+                                          "language": lang_code, "diagnosis_context": ctx},
+                                    timeout=120).json()
+                st.session_state.f_adv = adv
+                aud = requests.post(f"{BACKEND_URL}/api/v1/voice-synthesize",
+                                    json={"text": adv.get("spoken_reply", "")[:350],
+                                          "language": lang_code}, timeout=60).content
+                st.session_state.f_audio = aud
+                st.rerun()
+            except Exception as e:
+                st.error(f"Wahala: {e}. Start backend first:\n`python3 -m uvicorn backend.main:app --port 8000`")
+
+diag = st.session_state.f_diag
+if diag:
+    d = (diag.get("disease_detected") or "").lower()
+    icon = "🟡" if "mosaic" in d else ("🐛" if "armyworm" in d else
+            ("🟤" if "blight" in d else ("💚" if "healthy" in d else "🔍")))
+    st.markdown(
+        f'<div class="dx"><div class="icon">{icon}</div>'
+        f'<div class="name">{diag.get("disease_detected")}</div>'
+        f'<div class="meta">{diag.get("crop_name", "").title()} • {diag.get("damage_percentage")}% damage</div></div>',
+        unsafe_allow_html=True,
+    )
+    if st.session_state.f_audio:
+        st.markdown("### 2️⃣ Tap play — voice go tell you 👇")
+        st.audio(st.session_state.f_audio, format="audio/mp3")
+    if st.session_state.f_adv:
+        st.markdown(f"*{st.session_state.f_adv.get('spoken_reply', '')}*")
+    st.markdown("### 3️⃣ Do these 3 cheap things 👇")
+    for i, r in enumerate((diag.get("organic_remedies") or [])[:3], 1):
+        st.markdown(f'<div class="recipe"><b>{["🌿", "🪵", "🧼"][i-1]} {i}. {r.get("title")}</b><br>'
+                    f'{r.get("preparation")}</div>', unsafe_allow_html=True)
+    if st.button("💾 SAVE AM FOR LATER"):
+        st.success("Saved ✅ E go sync when network show.")

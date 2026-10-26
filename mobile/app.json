@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "name": "AgriPulse Edge",
+    "slug": "agripulse-edge-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "splash": { "image": "./assets/splash.png", "backgroundColor": "#0b4d2e" },
+    "plugins": [
+      ["expo-camera", { "cameraPermission": "Allow AgriPulse to snap sick leaves for diagnosis." }]
+    ],
+    "android": { "package": "com.agripulse.edge" },
+    "ios": { "bundleIdentifier": "com.agripulse.edge" }
+  }
+}
