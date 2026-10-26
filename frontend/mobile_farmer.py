@@ -71,14 +71,41 @@ lang_code = {"🇳🇬 Pidgin": "pidgin", "🇳🇬 Hausa": "hausa",
 st.markdown("### 1️⃣ Snap / upload leaf")
 photo = st.file_uploader("Take photo or upload", type=["jpg", "jpeg", "png", "webp"],
                          label_visibility="collapsed")
+
+st.markdown("##### ⚡ Quick Test Presets")
+_FBASE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sample_data")
+preset_cols = st.columns(3)
+with preset_cols[0]:
+    if st.button("🍃 Cassava", use_container_width=True):
+        with open(os.path.join(_FBASE, "cassava_mosaic.jpg"), "rb") as f:
+            st.session_state.f_raw = f.read()
+            st.session_state.f_name = "cassava_mosaic.jpg"
+            st.rerun()
+with preset_cols[1]:
+    if st.button("🌽 Maize", use_container_width=True):
+        with open(os.path.join(_FBASE, "maize_fall_armyworm.jpg"), "rb") as f:
+            st.session_state.f_raw = f.read()
+            st.session_state.f_name = "maize_fall_armyworm.jpg"
+            st.rerun()
+with preset_cols[2]:
+    if st.button("🍅 Tomato", use_container_width=True):
+        with open(os.path.join(_FBASE, "tomato_early_blight.jpg"), "rb") as f:
+            st.session_state.f_raw = f.read()
+            st.session_state.f_name = "tomato_early_blight.jpg"
+            st.rerun()
+
+# Single shared Diagnose step: uploader and presets both land in f_raw/f_name.
 if photo:
-    raw = photo.getvalue()
+    st.session_state.f_raw = photo.getvalue()
+    st.session_state.f_name = photo.name
+if st.session_state.get("f_raw"):
+    raw = st.session_state.f_raw
     st.session_state.f_img = Image.open(io.BytesIO(raw)).convert("RGB")
     st.image(st.session_state.f_img, use_container_width=True)
     if st.button("📸 CHECK MY LEAF", type="primary"):
         with st.spinner("Checking…"):
             try:
-                files = {"file": (photo.name, raw, "image/jpeg")}
+                files = {"file": (st.session_state.get("f_name", "leaf.jpg"), raw, "image/jpeg")}
                 diag = requests.post(f"{BACKEND_URL}/api/v1/diagnose-edge",
                                      files=files, timeout=120).json()
                 st.session_state.f_diag = diag
