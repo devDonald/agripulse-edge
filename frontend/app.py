@@ -444,8 +444,10 @@ with tab_clinic:
         )
         if st.session_state.diagnosis is None:
             st.info("👈 Pick a sample leaf, then press **Run AI Diagnosis** — the report appears here.")
-            st.image("https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=900&q=60",
-                     caption="Healthy field · AgriPulse works offline too", use_container_width=True)
+            _empty_img = os.path.join(SAMPLE_DIR, "healthy_leaf.jpg")
+            if os.path.exists(_empty_img):
+                st.image(_empty_img,
+                         caption="AgriPulse runs 100% offline via ExecuTorch", use_container_width=True)
         else:
             diag = st.session_state.diagnosis
             seg = diag.get("segmentation") or {}
