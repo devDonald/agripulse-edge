@@ -27,8 +27,8 @@ st.markdown(
     html, body, [class*="css"] { font-family: 'Inter', system-ui, sans-serif; }
     .pill { background: #0b4d2e; color: #fff; border-radius: 999px; padding: 10px;
       text-align: center; font-weight: 800; font-size: 0.95rem; margin-bottom: 10px; }
-    .big-title { font-size: 1.9rem; font-weight: 900; color: #0b4d2e; text-align: center; margin: 2px 0; }
-    .sub { text-align: center; color: #5b7a61; font-size: 0.95rem; margin-bottom: 10px; }
+    .big-title { font-size: 2.1rem; font-weight: 900; color: #22c55e !important; text-align: center; margin: 2px 0; }
+    .sub { text-align: center; color: #d1fae5; font-size: 0.95rem; margin-bottom: 12px; }
     .dx { background: linear-gradient(135deg, #0b4d2e, #16a34a); border-radius: 22px;
       padding: 24px 18px; text-align: center; color: #fff; margin: 12px 0; }
     .dx .icon { font-size: 4rem; }
