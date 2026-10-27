@@ -44,6 +44,18 @@ def test_diagnose_maize_fall_armyworm():
     assert len(data["organic_remedies"]) == 3
 
 
+def test_diagnose_user_maize_rust():
+    """Regression: user's real rust-covered maize blade must stay maize (never cassava)."""
+    path = os.path.join(SAMPLE_DIR, "user_maize_rust.jpg")
+    with open(path, "rb") as f:
+        res = client.post("/api/v1/diagnose", files={"file": ("leaf.jpg", f, "image/jpeg")})
+    assert res.status_code == 200
+    data = res.json()
+    assert data["crop_name"].lower() == "maize", f"got {data['crop_name']}"
+    assert "rust" in data["disease_detected"].lower(), data["disease_detected"]
+    assert len(data["organic_remedies"]) == 3
+
+
 def test_diagnose_tomato_early_blight():
     path = os.path.join(SAMPLE_DIR, "tomato_early_blight.jpg")
     with open(path, "rb") as f:

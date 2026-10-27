@@ -1,5 +1,8 @@
 """FastAPI entrypoint: diagnose + segment + voice-advisory + whatsapp webhook + edge benchmark."""
+import logging
 import os
+import time
+import uuid
 from typing import Optional
 
 # TLS: use certifi bundle so api.meta.ai verifies on machines with bare OpenSSL (e.g. macOS py.org builds).
@@ -14,6 +17,17 @@ from fastapi import FastAPI, File, HTTPException, Query, Request, Response, Uplo
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from pydantic import BaseModel, Field, ValidationError
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
+
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO"),
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
+logger = logging.getLogger("agripulse.api")
+
+limiter = Limiter(key_func=get_remote_address, default_limits=["120/minute"])
 
 from backend.services.crop_diagnostician import DiagnosisResult, diagnose_image
 from backend.services.leaf_segmenter import SegmentationResult, segment_leaf_damage
@@ -32,14 +46,43 @@ app = FastAPI(
     version="1.3.0",
     description="Offline-First Crop Diagnostic & Multilingual Voice Copilot powered by Meta AI",
 )
+app.state.limiter = limiter
+
+
+@app.exception_handler(RateLimitExceeded)
+async def _rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(status_code=429, content={"detail": "Rate limit exceeded. Try again shortly."})
+
+
+def _origins():
+    raw = os.getenv("CORS_ORIGINS", "*").strip()
+    if raw == "*":
+        return ["*"]
+    return [o.strip() for o in raw.split(",") if o.strip()]
+
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def _request_id_log(request: Request, call_next):
+    rid = str(uuid.uuid4())[:8]
+    t0 = time.perf_counter()
+    try:
+        resp = await call_next(request)
+    except Exception:
+        logger.exception(f"rid={rid} {request.method} {request.url.path} FAILED")
+        raise
+    dt = (time.perf_counter() - t0) * 1000
+    logger.info(f"rid={rid} {request.method} {request.url.path} -> {resp.status_code} ({dt:.0f}ms)")
+    resp.headers["X-Request-ID"] = rid
+    return resp
 
 ALLOWED = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
 MAX_BYTES = 10 * 1024 * 1024
@@ -55,6 +98,21 @@ def health():
         "offline_edge_ready": True,
         "models_integrated": [m["label"] for m in MODEL_CATALOG],
     }
+
+
+@app.get("/ready")
+def ready():
+    """Deep readiness: model registry, sample data, and cloud-key presence."""
+    key_set = bool((os.getenv("MODEL_API_KEY") or os.getenv("META_API_KEY") or "").strip())
+    checks = {
+        "model_registry": len(MODEL_CATALOG) == 6,
+        "sample_data": os.path.isdir(
+            os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sample_data")
+        ),
+        "cloud_key_configured": key_set,
+    }
+    ok = checks["model_registry"] and checks["sample_data"]
+    return JSONResponse(status_code=200 if ok else 503, content={"ready": ok, "checks": checks})
 
 
 class VoiceAdvisoryRequest(BaseModel):
@@ -106,7 +164,9 @@ def list_models():
 
 
 @app.post("/api/v1/diagnose", response_model=DiagnosisResult)
+@limiter.limit("30/minute")
 async def diagnose(
+    request: Request,
     file: UploadFile = File(..., description="Crop leaf photo"),
     force_offline: bool = Query(
         default=False,
@@ -145,10 +205,11 @@ async def diagnose(
 
 @app.post("/api/v1/diagnose-edge", response_model=DiagnosisResult)
 async def diagnose_edge(
-    file: UploadFile = File(..., description="Crop leaf photo for offline edge diagnosis")
+    request: Request,
+    file: UploadFile = File(..., description="Crop leaf photo for offline edge diagnosis"),
 ):
     """Guaranteed zero-data offline edge diagnosis using simulated ExecuTorch on-device pipeline."""
-    return await diagnose(file, force_offline=True)
+    return await diagnose(request, file, force_offline=True)
 
 
 @app.post("/api/v1/segment", response_model=SegmentationResult)

@@ -126,16 +126,16 @@ REMEDY_DATABASE = {
     ],
     "maize": [
         {
+            "title": "Neem & Baking Soda Anti-Rust Spray",
+            "preparation": "Pound 500g fresh neem leaves, soak in 4L clean water overnight and sieve. Dissolve 2 tablespoons baking soda plus 1 teaspoon local black soap in the filtrate. Spray both leaf sides at sunset every 5 days — neem disrupts spore germination, soda dries pustules.",
+        },
+        {
             "title": "Wood Ash & Fine Sand Funneling (Anti-Armyworm)",
             "preparation": "Mix 1 part dry sieved wood ash with 1 part fine river sand. Pour half a teaspoon directly into the growing central whorl (funnel) of each maize plant. The abrasive sand and alkaline ash dehydrates and kills juvenile Fall Armyworm caterpillars inside the whorl.",
         },
         {
-            "title": "Hot Chili-Garlic & Soap Spray",
-            "preparation": "Crush 5 hot habanero peppers and 1 bulb of garlic. Boil in 2L water for 20 minutes, cool and strain. Add 3L water and 1 tablespoon dissolved soap. Spray directly into damaged whorls. Acts as a potent organic stomach poison and repellent against caterpillars.",
-        },
-        {
-            "title": "Trap Cropping & Intercropping",
-            "preparation": "Intercrop maize with cowpea or desmodium, and plant Napier grass along field perimeters. Push-pull mechanism repels armyworm moths from the maize crop while attracting natural parasitic wasps.",
+            "title": "Strip Rusted Leaves & Intercrop",
+            "preparation": "Strip the worst rusted lower leaves first and bury them far from the farm (never compost). Intercrop maize with cowpea or desmodium to improve airflow and attract parasitic wasps that suppress both rust spread and armyworm moths.",
         },
     ],
     "tomato": [
@@ -319,7 +319,7 @@ async def diagnose_image(
 
     last_error = None
     usage: Optional[dict] = None
-    for attempt in range(2):
+    for attempt in range(3):
         try:
             async with httpx.AsyncClient(timeout=META_TIMEOUT) as client:
                 resp = await client.post(META_API_URL, headers=headers, json=payload)
@@ -345,10 +345,16 @@ async def diagnose_image(
                     if usage:
                         out.usage = usage  # type: ignore[attr-defined]
                     return out
-                last_error = f"Meta API error {resp.status_code}: {resp.text[:500]}"
+                # Retry 429/5xx with backoff; fail fast on 4xx (bad key/model).
+                if resp.status_code in (429, 500, 502, 503, 504):
+                    last_error = f"Meta API error {resp.status_code}: {resp.text[:300]}"
+                else:
+                    raise RuntimeError(f"Meta API error {resp.status_code}: {resp.text[:500]}")
+        except RuntimeError:
+            raise
         except Exception as e:
-            last_error = str(e)
-            await asyncio.sleep(0.5)
+            last_error = str(e)[:300]
+        await asyncio.sleep(0.5 * (2 ** attempt))
 
     logger.warning(f"Meta API call failed ({last_error}), falling back to on-device edge classification.")
     # Graceful fallback: reuse the gatekeeper probe (identical result, no double work)

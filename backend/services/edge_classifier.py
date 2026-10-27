@@ -190,6 +190,30 @@ def _compute_image_features(img: Image.Image) -> dict:
     damage_pct = int(round((float(damage_mask.sum()) / float(leaf_pixel_count)) * 100.0))
     damage_pct = max(0, min(100, damage_pct))
 
+    # Rust-pustule speckle: dense small dark dots -> connected-component count.
+    # Rust/affected blades carry 500+ discrete pustules; blight shows a few
+    # large blotches (<150). Strided flood-fill keeps it fast on-device.
+    dark = leaf_mask & (V < 110.0) & (S >= 30.0)
+    seen = np.zeros_like(dark, dtype=bool)
+    spot_count = 0
+    Hh, Ww = dark.shape
+    for yy in range(0, Hh, 2):
+        for xx in range(0, Ww, 2):
+            if dark[yy, xx] and not seen[yy, xx]:
+                spot_count += 1
+                stack = [(yy, xx)]
+                seen[yy, xx] = True
+                grown = 0
+                while stack and grown < 500:
+                    cy, cx = stack.pop()
+                    grown += 1
+                    for dy in (-2, 0, 2):
+                        for dx in (-2, 0, 2):
+                            ny, nx = cy + dy, cx + dx
+                            if 0 <= ny < Hh and 0 <= nx < Ww and dark[ny, nx] and not seen[ny, nx]:
+                                seen[ny, nx] = True
+                                stack.append((ny, nx))
+
     shape = _compute_shape_features(leaf_mask, V)
 
     return {
@@ -199,6 +223,7 @@ def _compute_image_features(img: Image.Image) -> dict:
         "necrosis_ratio": necrosis_ratio,
         "hole_ratio": hole_ratio,
         "damage_pct": damage_pct,
+        "spot_count": int(spot_count),
         "shape_aspect": shape["aspect"],
         "shape_extent": shape["extent"],
         "shape_compactness": shape["compactness"],
@@ -238,14 +263,19 @@ def classify_leaf_on_device(image_bytes: bytes) -> EdgeClassification:
     compact = feats.get("shape_compactness", 15.0)
     lobes = feats.get("shape_lobes", 0)
     pvein = bool(feats.get("shape_parallel_veins", False))
+    spots = int(feats.get("spot_count", 0))
 
     # ── STEP 1: CROP from leaf architecture (shape), NOT color ──
     # maize: long parallel-veined blade | cassava: palmate 3-7 lobes | tomato: oval leaflets
     # shape_known=False when the mask covers ~the whole frame (tight macro crop):
     # then the outline is the photo rectangle and elongation/lobes are meaningless.
     shape_known = extent <= 0.95 and feats.get("leaf_ratio", 0.0) < 0.90
+    # Dense pustule speckle (rust) on a green blade is a maize signature even
+    # when overlapping blades merge into a blobby mask (user's rust photo).
+    if spots >= 400 and chlor < 0.50:
+        crop = "maize"
     # A blade-like mask is NEVER cassava/tomato no matter how yellow it is.
-    if elong > 3.0:
+    elif elong > 3.0:
         crop = "maize"
     elif lobes >= 3:
         crop = "cassava"
@@ -285,6 +315,21 @@ def classify_leaf_on_device(image_bytes: bytes) -> EdgeClassification:
 
     # ── MAIZE branch ──
     if crop == "maize":
+        if spots >= 400:
+            return EdgeClassification(
+                is_leaf=True,
+                crop_name="maize",
+                disease_detected="Maize Common Rust (Puccinia sorghi)",
+                confidence=0.90,
+                damage_percentage=dmg,
+                severity=_sev(40, 10),
+                symptoms=[
+                    "Dense small cinnamon-brown pustules scattered across the blade",
+                    "Tan-yellow halos surrounding each rust pustule cluster",
+                    "Pustules concentrated along and between parallel veins",
+                ],
+                metrics=metrics,
+            )
         if holes > 0.015 or (necr > 0.05 and chlor < 0.08):
             return EdgeClassification(
                 is_leaf=True,

@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: agripulse-edge-api
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: MOCK_MODE
+        value: false
+      - key: MODEL_API_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        value: "*"
+      - key: LOG_LEVEL
+        value: INFO
+    healthCheckPath: /ready
