@@ -670,7 +670,13 @@ with tab_whatsapp:
                 st.session_state.wa_chat.append({"sender": "bot", "text": f"Error: {e}"})
 
         if st.button("📸 Send Sample Leaf Photo as WhatsApp Attachment", use_container_width=True):
-            st.session_state.wa_chat.append({"sender": "user", "text": "📸 [Leaf photo: sample_leaf_01] Doctor, look my crop"})
+            import base64 as _b64mod
+            _leaf_bytes = None
+            _leaf_path = os.path.join(SAMPLE_DIR, "maize_fall_armyworm.jpg")
+            if os.path.exists(_leaf_path):
+                with open(_leaf_path, "rb") as _f:
+                    _leaf_bytes = _b64mod.b64encode(_f.read()).decode()
+            st.session_state.wa_chat.append({"sender": "user", "text": "📸 [Leaf photo: maize sample] Doctor, look my crop"})
             payload = {
                 "object": "whatsapp_business_account",
                 "entry": [{
@@ -679,7 +685,8 @@ with tab_whatsapp:
                             "messages": [{
                                 "from": "+2348012345678",
                                 "type": "image",
-                                "image": {"id": "sample_leaf_01", "caption": "Doctor, look my crop"}
+                                "image": {"id": "sample_leaf_01", "caption": "Doctor, look my crop",
+                                          **({"content_base64": _leaf_bytes} if _leaf_bytes else {})}
                             }]
                         }
                     }]
