@@ -84,6 +84,9 @@ class DiagnosisResult(BaseModel):
     model_used: Optional[str] = Field(default=None, description="Active Meta model ID")
     live_call: Optional[bool] = Field(default=None, description="True if billed on dev.meta.ai")
     usage: Optional[dict] = Field(default=None, description="Token usage from Meta API")
+    needs_review: bool = Field(
+        default=False, description="True when confidence is low — ask farmer to retake"
+    )
 
     @field_validator("crop_name", "disease_detected")
     @classmethod

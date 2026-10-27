@@ -198,8 +198,11 @@ async def diagnose(
         # Fuse: prefer measured segmentation % as authoritative damage estimate
         merged.damage_percentage = max(0, min(100, int(round(seg.damage_percentage))))
         merged.segmentation = seg.model_dump()
+        # Confidence gate: below 0.55 the app must ask for a retake, not bluff.
+        merged.needs_review = merged.confidence < 0.55
         return JSONResponse(content=merged.model_dump(mode="json"))
     except Exception:
+        result.needs_review = result.confidence < 0.55
         return JSONResponse(content=result.model_dump(mode="json"))
 
 

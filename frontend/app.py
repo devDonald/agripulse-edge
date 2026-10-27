@@ -412,9 +412,12 @@ with tab_clinic:
                              else "Running on-device ExecuTorch INT8 model..."))
             with st.spinner(spinner):
                 try:
+                    import time as _t
+                    _t0 = _t.perf_counter()
                     res = api_diagnose(st.session_state.img_bytes, st.session_state.img_name,
                                        IS_OFFLINE, model_id=None if IS_OFFLINE else eff_model,
                                        use_live=use_live and not IS_OFFLINE)
+                    res["_latency_ms"] = int((_t.perf_counter() - _t0) * 1000)
                     st.session_state.diagnosis = res
                     seg = res.get("segmentation") or {}
                     if seg.get("mask_overlay_base64"):
@@ -451,6 +454,16 @@ with tab_clinic:
             seg = diag.get("segmentation") or {}
             sev = str(diag.get("severity", "low")).lower()
             sev_dot = {"low": "🟢", "moderate": "🟡", "severe": "🔴"}.get(sev, "🟢")
+
+            # Confidence gate: low-confidence reads ask for a retake, never bluff.
+            if diag.get("needs_review") or float(diag.get("confidence", 1.0)) < 0.55:
+                st.warning("⚠️ **Uncertain read** — confidence "
+                           f"{float(diag.get('confidence', 0)):.0%}. "
+                           "Retake closer, in daylight, with the leaf filling the frame, "
+                           "then diagnose again. Treatment below is provisional.")
+            if diag.get("_latency_ms") is not None:
+                st.caption(f"⏱️ Diagnosed in {diag['_latency_ms']}ms · "
+                           f"model `{diag.get('model_used', 'edge-classifier')}`")
 
             if st.session_state.mask_img is not None and st.session_state.orig_img is not None:
                 t1, t2 = st.tabs(["🎯 SAM 2 lesion map", "🖼️ Original photo"])
@@ -520,9 +533,9 @@ with tab_clinic:
             with st.expander("⚡ Multi-Model Latency & Reasoning Comparison", expanded=False):
                 c1, c2, c3 = st.columns(3)
                 with c1:
-                    st.markdown('<div class="kpi"><div class="lbl">☁️ Llama 3.2 90B Cloud</div>'
-                                '<div class="val">1,240 tokens</div>'
-                                '<div class="sub">high depth · 1.4s latency<br>deep pathology reasoning</div></div>',
+                    st.markdown('<div class="kpi"><div class="lbl">👁️ Muse Image (true vision)</div>'
+                                '<div class="val">~11k tokens</div>'
+                                '<div class="sub">sees pixels · ~8s<br>maize/rust from photo</div></div>',
                                 unsafe_allow_html=True)
                 with c2:
                     st.markdown('<div class="kpi"><div class="lbl">📱 Llama 3.2 3B Edge</div>'
@@ -530,11 +543,11 @@ with tab_clinic:
                                 '<div class="sub">38ms · 0KB data<br>ExecuTorch INT8 on-device</div></div>',
                                 unsafe_allow_html=True)
                 with c3:
-                    st.markdown('<div class="kpi"><div class="lbl">🎯 SAM 2 Mask</div>'
-                                '<div class="val">45ms</div>'
-                                '<div class="sub">lesion mask generation<br>pixel-accurate chlorosis/necrosis</div></div>',
+                    st.markdown('<div class="kpi"><div class="lbl">🎯 SAM 3.1 Mask</div>'
+                                '<div class="val">live RLE</div>'
+                                '<div class="sub">lesion mask, unbilled<br>pixel-accurate chlorosis/necrosis</div></div>',
                                 unsafe_allow_html=True)
-                st.caption("Switch models live via 🧠 Active Meta AI Model in the sidebar, then re-run diagnosis.")
+                st.caption("Switch models live via 🧠 Active Meta AI Model above, then re-run diagnosis.")
         st.markdown("</div>", unsafe_allow_html=True)
 
 

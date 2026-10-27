@@ -272,12 +272,19 @@ def classify_leaf_on_device(image_bytes: bytes) -> EdgeClassification:
     shape_known = extent <= 0.95 and feats.get("leaf_ratio", 0.0) < 0.90
     # Dense pustule speckle (rust) on a green blade is a maize signature even
     # when overlapping blades merge into a blobby mask (user's rust photo).
+    # Primary cue is boundary complexity: hundreds of pustules blow compactness
+    # to 20-180x smooth-leaf values, invariant to dim/blur/downscale light.
+    # Spot count is the secondary confirmation (merges under blur).
     if spots >= 400 and chlor < 0.50:
+        crop = "maize"
+    elif compact > 20.0 and dmg >= 12:
+        crop = "maize"
+    elif spots >= 150 and dmg >= 15 and chlor >= 0.08 and compact > 5.0:
         crop = "maize"
     # A blade-like mask is NEVER cassava/tomato no matter how yellow it is.
     elif elong > 3.0:
         crop = "maize"
-    elif lobes >= 3:
+    elif lobes >= 3 and compact > 1.6:
         crop = "cassava"
     elif pvein:
         crop = "maize"  # parallel veins visible even in full-frame macros
@@ -316,6 +323,23 @@ def classify_leaf_on_device(image_bytes: bytes) -> EdgeClassification:
     # ── MAIZE branch ──
     if crop == "maize":
         if spots >= 400:
+            # Disambiguate rust vs gray leaf spot by pustule color: rust = warm
+            # cinnamon-brown dots; GLS = gray-tan rectangular lesions.
+            if necr > chlor and necr > 0.05:
+                return EdgeClassification(
+                    is_leaf=True,
+                    crop_name="maize",
+                    disease_detected="Maize Gray Leaf Spot (Cercospora zeae-maydis)",
+                    confidence=0.86,
+                    damage_percentage=dmg,
+                    severity=_sev(40, 10),
+                    symptoms=[
+                        "Rectangular gray-tan lesions delimited by leaf veins",
+                        "Necrotic lesions with minimal yellow halo",
+                        "Lesions concentrated on lower mature foliage",
+                    ],
+                    metrics=metrics,
+                )
             return EdgeClassification(
                 is_leaf=True,
                 crop_name="maize",
