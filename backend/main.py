@@ -105,7 +105,7 @@ def ready():
     """Deep readiness: model registry, sample data, and cloud-key presence."""
     key_set = bool((os.getenv("MODEL_API_KEY") or os.getenv("META_API_KEY") or "").strip())
     checks = {
-        "model_registry": len(MODEL_CATALOG) == 6,
+        "model_registry": len(MODEL_CATALOG) >= 6,
         "sample_data": os.path.isdir(
             os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sample_data")
         ),
