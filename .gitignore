@@ -4,3 +4,4 @@ __pycache__/
 .env
 /tmp/
 sample_leaf.jpg
+*.db
