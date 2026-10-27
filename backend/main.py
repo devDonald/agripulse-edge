@@ -3,7 +3,7 @@ import logging
 import os
 import time
 import uuid
-from typing import Optional
+from typing import List, Optional
 
 # TLS: use certifi bundle so api.meta.ai verifies on machines with bare OpenSSL (e.g. macOS py.org builds).
 try:
@@ -36,6 +36,11 @@ from backend.services.meta_models import BY_ID, MODEL_CATALOG
 from backend.services.mobile_sync import get_history, save_scan, sync_batch
 from backend.services.multilingual_advisor import AdvisoryResponse, generate_advisory
 from backend.services.voice_synthesizer import synthesize_spoken_audio
+from backend.services.dial_service import (
+    dial_configured,
+    process_dial_event,
+    ring_farmer_with_treatment,
+)
 from backend.services.whatsapp_service import (
     process_incoming_whatsapp_payload,
     verify_webhook_token,
@@ -144,6 +149,15 @@ class MobileScan(BaseModel):
 class MobileSyncBatch(BaseModel):
     farmer_id: str = Field(..., min_length=2)
     scans: list = Field(default_factory=list)
+
+
+class DialCallRequest(BaseModel):
+    to: str = Field(..., min_length=7, description="Farmer phone in E.164, e.g. +2348012345678")
+    crop_name: str = "cassava"
+    disease_detected: str = "unknown"
+    damage_percentage: float = 0.0
+    steps: List[str] = Field(default_factory=list)
+    language: str = "pidgin"
 
 
 def _check_image(file: UploadFile, raw: bytes):
@@ -303,4 +317,45 @@ async def whatsapp_message_webhook(request: Request):
     """Handles incoming farmer voice notes, photos, and messages via WhatsApp."""
     payload = await request.json()
     result = await process_incoming_whatsapp_payload(payload)
+    return JSONResponse(content=result)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Dial transport (getdial.ai): real phone number with WhatsApp + voice + SMS
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@app.get("/api/v1/dial/status")
+async def dial_status():
+    """Reports whether a live Dial number is configured (else simulated mode)."""
+    from backend.services.dial_service import DIAL_NUMBER
+
+    return JSONResponse(content={
+        "configured": dial_configured(),
+        "number": (DIAL_NUMBER[:4] + "…" + DIAL_NUMBER[-3:] + " (masked)")
+        if DIAL_NUMBER else None,
+        "transports": ["whatsapp", "voice", "sms"],
+    })
+
+
+@app.post("/api/v1/dial/webhook")
+async def dial_webhook(request: Request):
+    """Receives Dial message.received events (photo in media array -> voice note out)."""
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    result = await process_dial_event(payload if isinstance(payload, dict) else {})
+    return JSONResponse(content=result)
+
+
+@app.post("/api/v1/dial/call")
+async def dial_call(req: DialCallRequest):
+    """Rings a farmer and reads the treatment slip aloud (offline-week fallback)."""
+    steps = req.steps or ["Prepare neem leaf spray as advised by the extension officer.",
+                          "Spray under the leaves at sunset.",
+                          "Remove badly infected leaves and bury them far from the farm."]
+    result = await ring_farmer_with_treatment(
+        req.to, req.crop_name, req.disease_detected,
+        req.damage_percentage, steps, req.language)
     return JSONResponse(content=result)

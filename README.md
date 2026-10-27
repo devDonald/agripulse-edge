@@ -157,6 +157,30 @@ docker run -p 8000:8000 --env-file .env agripulse-edge:latest
 
 ---
 
+## 📞 Dial Transport (getdial.ai) — Real Number, WhatsApp + Voice + SMS
+
+For demo + pilot: a real Dial phone number replaces the simulated WhatsApp
+path. Farmer sends a leaf photo → `message.received` media array → diagnose →
+Pidgin/Hausa voice note back. Offline that week? Same number rings them and
+reads the treatment slip aloud. No data needed on their side.
+
+```bash
+npm i -g @getdial/cli && dial auth login you@example.com
+# provision a number, then point its webhook at https://YOUR_HOST/api/v1/dial/webhook
+MOCK_MODE=true python3 scripts/test_dial_transport.py   # simulated mode, no key needed
+```
+
+| Endpoint | Purpose |
+| :--- | :--- |
+| `GET /api/v1/dial/status` | Live-number check (masked) vs simulated mode |
+| `POST /api/v1/dial/webhook` | `message.received` → diagnosis + voice-note reply |
+| `POST /api/v1/dial/call` | Outbound treatment readout call |
+
+Env: `DIAL_API_KEY`, `DIAL_NUMBER`, `DIAL_WEBHOOK_SECRET` (see `.env.example`).
+The Meta WhatsApp Cloud webhook stays live alongside — belt and suspenders.
+
+---
+
 ## 🧪 Comprehensive Test Suite
 
 ### Automated Robustness Tests (19/19 Passing)
