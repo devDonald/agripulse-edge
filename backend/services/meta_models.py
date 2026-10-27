@@ -11,10 +11,13 @@ Legacy meta/llama-3.2-* aliases resolve to the live cloud flagship.
 from typing import Dict, List, Optional
 
 # Live cloud models on THIS dev.meta.ai key (verified via GET /v1/models + billed pings).
+# muse-image-1.0 SEES pixels (true vision diagnosis); spark/wonder are text
+# reasoners (advisory + ensemble fallback); sam-3.1 segments (mask only).
 CLOUD_MODEL_IDS = [
     "muse-spark-1.3",
     "muse-spark-1.2",
     "muse-wonder-1.0",
+    "muse-image-1.0",
 ]
 # On-device ExecuTorch bundles (local .pte files — zero data, never billed).
 EDGE_MODEL_IDS = [
@@ -23,7 +26,9 @@ EDGE_MODEL_IDS = [
 ]
 SEG_MODEL_ID = "sam-2-hiera-large"
 
-META_MODEL_IDS = CLOUD_MODEL_IDS + EDGE_MODEL_IDS + [SEG_MODEL_ID]
+META_MODEL_IDS = list(dict.fromkeys(
+    CLOUD_MODEL_IDS + EDGE_MODEL_IDS + [SEG_MODEL_ID, "sam-3.1", "muse-image-1.0"]
+))
 
 # Back-compat: old hackathon IDs map to live equivalents.
 LEGACY_ALIASES = {
@@ -35,6 +40,28 @@ LEGACY_ALIASES = {
 }
 
 MODEL_CATALOG: List[Dict] = [
+    {
+        "id": "muse-image-1.0",
+        "label": "Muse Image 1.0 (Cloud — True Vision Diagnosis, Sees Pixels)",
+        "family": "muse-vision",
+        "tier": "cloud",
+        "tokens": 17000,
+        "latency": "8s",
+        "depth": "visual",
+        "data_kb": "~400",
+        "supports": ["diagnose"],
+    },
+    {
+        "id": "sam-3.1",
+        "label": "SAM 3.1 (Cloud — Lesion Mask, Pixel Measurement)",
+        "family": "segment",
+        "tier": "cloud",
+        "tokens": 0,
+        "latency": "15s",
+        "depth": "mask",
+        "data_kb": "~400",
+        "supports": ["segment"],
+    },
     {
         "id": "muse-spark-1.3",
         "label": "Muse Spark 1.3 (Cloud — Flagship Meta Muse Reasoning & Diagnosis)",
@@ -106,7 +133,8 @@ MODEL_CATALOG: List[Dict] = [
 BY_ID: Dict[str, Dict] = {m["id"]: m for m in MODEL_CATALOG}
 DEFAULT_MODEL_ID = "muse-spark-1.3"
 EDGE_MODEL_ID = "llama-3.2-3b-edge"
-SAM_MODEL_ID = "sam-2-hiera-large"
+SAM_MODEL_ID = "sam-3.1"
+VISION_DIAGNOSIS_MODEL = "muse-image-1.0"
 
 VISION_MODEL_IDS = tuple(CLOUD_MODEL_IDS)
 

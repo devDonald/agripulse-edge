@@ -107,6 +107,33 @@ def _fallback_segment(image_bytes: bytes) -> dict:
 
 
 def _try_sam2(image_bytes: bytes) -> Optional[dict]:
+    """Calls live sam-3.1 (/v1/responses) if a key is set, else None (HSV fallback)."""
+    if MOCK_MODE or not (os.getenv("MODEL_API_KEY") or os.getenv("META_API_KEY", "")):
+        return None
+    try:
+        from backend.services.vision_client import sam_mask_overlay
+
+        r = sam_mask_overlay(image_bytes, max_dim=MAX_DIM)
+        if not r:
+            return None
+        img = _load_rgb(image_bytes)
+        w, h = img.size
+        # Recompute chlorosis/necrosis split locally for the stats card.
+        fb = _fallback_segment(image_bytes)
+        return {
+            "leaf_area_pixels": r["leaf_area_pixels"],
+            "lesion_area_pixels": r["lesion_area_pixels"],
+            "chlorosis_pixels": fb["chlorosis_pixels"],
+            "necrosis_pixels": fb["necrosis_pixels"],
+            "damage_percentage": r["damage_percentage"],
+            "mask_overlay_base64": r["mask_overlay_base64"],
+            "method_used": "SAM-3.1 (Meta AI Vision)",
+        }
+    except Exception:
+        return None
+
+
+def _try_sam2_legacy(image_bytes: bytes) -> Optional[dict]:
     """Calls Meta SAM 2 endpoint if configured, else returns None."""
     if MOCK_MODE or not SAM2_API_URL:
         return None

@@ -24,6 +24,15 @@ from backend.services.meta_models import (
     resolve_model,
 )
 
+VISION_DIAGNOSIS_QUESTION = (
+    "OUTPUT ONLY the JSON object below — no reasoning, no preamble, no markdown. "
+    "First look at the photo, then emit exactly: "
+    '{"crop_name": "<cassava|maize|tomato|other>", '
+    '"disease_detected": "<disease with scientific name>", "confidence": 0.0-1.0, '
+    '"damage_percentage": 0-100, "severity": "low|moderate|severe", '
+    '"symptoms": ["...", "..."]}'
+)
+
 load_dotenv()
 logger = logging.getLogger("agripulse.diagnostician")
 
@@ -172,21 +181,29 @@ def _get_remedies_for_crop(crop_name: str) -> List[OrganicRemedy]:
 def _extract_json(text: str) -> dict:
     """Robust JSON extraction handling markdown fences, comments, and preambles."""
     cleaned = re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.MULTILINE).strip()
+    # Strip markdown bold/headers reasoning models wrap around JSON.
+    cleaned = re.sub(r"\*\*(.*?)\*\*", r"\1", cleaned)
     try:
         return json.loads(cleaned)
     except json.JSONDecodeError:
         pass
 
-    # Find outermost curly braces
-    m = re.search(r"\{.*\}", cleaned, flags=re.DOTALL)
-    if not m:
+    # Find outermost curly braces — prefer blocks containing crop_name (vision
+    # verdicts bury JSON after **reasoning** preamble).
+    candidates = list(re.finditer(r"\{.*\}", cleaned, flags=re.DOTALL))
+    if not candidates:
         raise ValueError(f"Model did not return JSON: {text[:500]}")
-    try:
-        return json.loads(m.group(0))
-    except json.JSONDecodeError as e:
-        # Try cleaning trailing commas
-        fixed = re.sub(r",\s*([\]}])", r"\1", m.group(0))
-        return json.loads(fixed)
+    # Prefer the LAST crop_name-bearing block (reasoning preamble comes first).
+    ordered = sorted(candidates, key=lambda m: (0 if '"crop_name"' in m.group(0) else 1,
+                                                -m.start()))
+    for m in ordered:
+        try:
+            return json.loads(m.group(0))
+        except json.JSONDecodeError:
+            continue
+    # Try cleaning trailing commas on the best candidate
+    fixed = re.sub(r",\s*([\]}])", r"\1", ordered[0].group(0))
+    return json.loads(fixed)
 
 
 def _extract_message_content(choice: dict) -> str:
@@ -204,6 +221,45 @@ def _extract_message_content(choice: dict) -> str:
         if isinstance(val, str) and val.strip():
             return val
     return json.dumps(choice)[:2000]
+
+
+def _diagnosis_from_verdict_text(verdict: str, edge_probe) -> "DiagnosisResult":
+    """Builds a DiagnosisResult from muse-image's prose when JSON truncates.
+
+    The words are pixel-grounded (the model saw the photo); the probe supplies
+    numbers. Crop defaults to the probe unless the text clearly names another.
+    """
+    low = (verdict or "").lower()
+    crop = edge_probe.crop_name
+    for cand in ("maize", "cassava", "tomato", "yam", "cowpea", "sorghum"):
+        if re.search(rf"\b{cand}\b", low):
+            crop = cand
+            break
+    disease = edge_probe.disease_detected
+    patterns = [
+        (r"tar\s*spot[^.]{0,60}(phyllachora\s*maydis)?", "Maize Tar Spot (Phyllachora maydis)"),
+        (r"common\s*rust[^.]{0,60}(puccinia\s*sorghi)?", "Maize Common Rust (Puccinia sorghi)"),
+        (r"southern\s*(corn\s*)?leaf\s*blight", "Southern Corn Leaf Blight (Cochliobolus heterostrophus)"),
+        (r"northern\s*(corn\s*)?leaf\s*blight", "Northern Leaf Blight (Exserohilum turcicum)"),
+        (r"maize\s*streak", "Maize Streak Virus"),
+        (r"fall\s*armyworm", "Fall Armyworm (Spodoptera frugiperda)"),
+        (r"cassava\s*mosaic", "Cassava Mosaic Disease (CMD)"),
+        (r"early\s*blight", "Early Blight (Alternaria solani)"),
+        (r"yellow\s*leaf\s*curl", "Tomato Yellow Leaf Curl"),
+    ]
+    for pat, name in patterns:
+        if re.search(pat, low):
+            disease = name
+            break
+    return DiagnosisResult(
+        crop_name=crop,
+        disease_detected=disease,
+        confidence=0.82,
+        damage_percentage=edge_probe.damage_percentage,
+        severity=Severity(edge_probe.severity),
+        symptoms=edge_probe.symptoms,
+        organic_remedies=_get_remedies_for_crop(crop),
+    )
 
 
 async def diagnose_image(
@@ -291,6 +347,53 @@ async def diagnose_image(
         if edge_probe.is_leaf else
         "On-device leaf scan: no clear leaf detected."
     )
+
+    # TRUE VISION first: the photo goes to muse-image-1.0 via /v1/responses
+    # (pixel-grounded verdict, billed per photo). The probe stays as gatekeeper
+    # + crop guard + ensemble context. Text-only path below is the fallback.
+    last_error = None
+    usage: Optional[dict] = None
+
+    def _vision_attempt() -> DiagnosisResult:
+        from backend.services.vision_client import ask_muse_image
+
+        r = ask_muse_image(image_bytes, VISION_DIAGNOSIS_QUESTION)
+        try:
+            parsed = _extract_json(r["verdict"])
+            out = DiagnosisResult(
+                crop_name=parsed.get("crop_name", edge_probe.crop_name),
+                disease_detected=parsed.get("disease_detected", edge_probe.disease_detected),
+                confidence=float(parsed.get("confidence", 0.85)),
+                damage_percentage=int(parsed.get("damage_percentage", edge_probe.damage_percentage)),
+                severity=Severity(str(parsed.get("severity", edge_probe.severity)).lower()),
+                symptoms=list(parsed.get("symptoms", edge_probe.symptoms)) or edge_probe.symptoms,
+                organic_remedies=_get_remedies_for_crop(
+                    str(parsed.get("crop_name", edge_probe.crop_name))),
+            )
+        except (ValueError, KeyError, TypeError):
+            # muse-image reasons in prose and truncates before JSON — mine its
+            # own words for crop/disease (still pixel-grounded), probe for numbers.
+            out = _diagnosis_from_verdict_text(r["verdict"], edge_probe)
+        if out.crop_name.strip().lower() != edge_probe.crop_name.strip().lower():
+            logger.warning(
+                f"Crop mismatch (vision={out.crop_name} vs probe={edge_probe.crop_name}); "
+                "keeping probe crop."
+            )
+            raise ValueError(
+                f"Vision crop '{out.crop_name}' contradicts on-device verdict "
+                f"'{edge_probe.crop_name}'"
+            )
+        out.model_used = "muse-image-1.0"  # type: ignore[attr-defined]
+        out.live_call = True  # type: ignore[attr-defined]
+        out.usage = r["usage"]  # type: ignore[attr-defined]
+        return out
+
+    try:
+        return await asyncio.to_thread(_vision_attempt)
+    except Exception as e:
+        last_error = str(e)[:300]
+        logger.warning(f"Vision diagnosis failed ({last_error}), trying text reasoning path.")
+
     payload = {
         "model": active_model,
         "messages": [
@@ -317,8 +420,6 @@ async def diagnose_image(
         "Content-Type": "application/json",
     }
 
-    last_error = None
-    usage: Optional[dict] = None
     for attempt in range(3):
         try:
             async with httpx.AsyncClient(timeout=META_TIMEOUT) as client:
@@ -345,9 +446,14 @@ async def diagnose_image(
                     if usage:
                         out.usage = usage  # type: ignore[attr-defined]
                     return out
-                # Retry 429/5xx with backoff; fail fast on 4xx (bad key/model).
+                # Retry 429/5xx with backoff; fail fast on 4xx (bad key/model) —
+                # except the image-model-on-chat error, which the vision-first
+                # flow already covered (fall through to probe, don't 502).
                 if resp.status_code in (429, 500, 502, 503, 504):
                     last_error = f"Meta API error {resp.status_code}: {resp.text[:300]}"
+                elif active_model in ("muse-image-1.0", "sam-3.1"):
+                    last_error = f"Image model {active_model} needs /v1/responses (already tried vision-first)"
+                    break
                 else:
                     raise RuntimeError(f"Meta API error {resp.status_code}: {resp.text[:500]}")
         except RuntimeError:
