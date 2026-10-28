@@ -1,0 +1,113 @@
+name: EC2 Power Control (1-Click Start / Stop)
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Power action to execute on AgriPulse EC2 instance'
+        required: true
+        default: 'status'
+        type: choice
+        options:
+          - 'status'
+          - 'start'
+          - 'stop'
+
+env:
+  DEFAULT_INSTANCE_ID: 'i-015666c277cf7af37'
+  DEFAULT_REGION: 'us-east-1'
+  DEFAULT_HOST: '52.0.227.75'
+  DEFAULT_USER: 'ubuntu'
+
+jobs:
+  power-action:
+    name: Execute EC2 Power Command
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspect Selected Action
+        run: |
+          echo "=========================================="
+          echo "Target Instance: ${{ secrets.AWS_INSTANCE_ID || env.DEFAULT_INSTANCE_ID }}"
+          echo "Region:          ${{ secrets.AWS_REGION || env.DEFAULT_REGION }}"
+          echo "Action:          ${{ github.event.inputs.action }}"
+          echo "=========================================="
+
+      - name: Configure AWS Credentials
+        if: ${{ secrets.AWS_ACCESS_KEY_ID != '' && secrets.AWS_SECRET_ACCESS_KEY != '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION || env.DEFAULT_REGION }}
+
+      # --- ACTION: STATUS ---
+      - name: Check Status via AWS API
+        if: ${{ github.event.inputs.action == 'status' && secrets.AWS_ACCESS_KEY_ID != '' }}
+        run: |
+          INSTANCE_ID="${{ secrets.AWS_INSTANCE_ID || env.DEFAULT_INSTANCE_ID }}"
+          STATE=$(aws ec2 describe-instances --instance-ids "$INSTANCE_ID" --query "Reservations[0].Instances[0].State.Name" --output text)
+          echo "Instance $INSTANCE_ID state: $STATE"
+          echo "INSTANCE_STATE=$STATE" >> $GITHUB_ENV
+
+      # --- ACTION: START ---
+      - name: Power On Instance (AWS API)
+        if: ${{ github.event.inputs.action == 'start' }}
+        run: |
+          if [ -z "${{ secrets.AWS_ACCESS_KEY_ID }}" ]; then
+            echo "::error::AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are required to turn ON a stopped EC2 instance."
+            echo "Please add your AWS credentials in GitHub Settings -> Secrets -> Actions."
+            exit 1
+          fi
+
+          INSTANCE_ID="${{ secrets.AWS_INSTANCE_ID || env.DEFAULT_INSTANCE_ID }}"
+          echo "Powering on instance $INSTANCE_ID..."
+          aws ec2 start-instances --instance-ids "$INSTANCE_ID"
+
+          echo "Waiting for instance to reach 'running' state..."
+          aws ec2 wait instance-running --instance-ids "$INSTANCE_ID"
+          echo "✅ EC2 instance is now RUNNING."
+
+          echo "Waiting for services to warm up..."
+          sleep 10
+
+      # --- ACTION: STOP ---
+      - name: Stop Instance via AWS API
+        if: ${{ github.event.inputs.action == 'stop' && secrets.AWS_ACCESS_KEY_ID != '' }}
+        run: |
+          INSTANCE_ID="${{ secrets.AWS_INSTANCE_ID || env.DEFAULT_INSTANCE_ID }}"
+          echo "Stopping instance $INSTANCE_ID..."
+          aws ec2 stop-instances --instance-ids "$INSTANCE_ID"
+
+          echo "Waiting for instance to reach 'stopped' state..."
+          aws ec2 wait instance-stopped --instance-ids "$INSTANCE_ID"
+          echo "✅ EC2 instance is now STOPPED. Billing paused."
+
+      # Fallback Stop via SSH if AWS API credentials are not provided
+      - name: Fallback Stop via SSH Shutdown
+        if: ${{ github.event.inputs.action == 'stop' && secrets.AWS_ACCESS_KEY_ID == '' && secrets.EC2_SSH_KEY != '' }}
+        run: |
+          echo "No AWS credentials detected, initiating graceful shutdown over SSH..."
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.EC2_HOST || env.DEFAULT_HOST }} >> ~/.ssh/known_hosts
+
+          ssh -o ConnectTimeout=5 ${{ secrets.EC2_USER || env.DEFAULT_USER }}@${{ secrets.EC2_HOST || env.DEFAULT_HOST }} "sudo poweroff" || true
+          echo "✅ Poweroff signal delivered to EC2. The instance will power down."
+
+      # Health Verification after Start or Status
+      - name: Verify Health Check
+        if: ${{ github.event.inputs.action == 'start' || (github.event.inputs.action == 'status' && env.INSTANCE_STATE == 'running') }}
+        continue-on-error: true
+        run: |
+          HOST="${{ secrets.EC2_HOST || env.DEFAULT_HOST }}"
+          echo "Checking HTTP health at http://$HOST/health..."
+          for i in {1..12}; do
+            if curl -sf -m 4 "http://$HOST/health" > /dev/null 2>&1; then
+              echo "✅ Public health check responding at http://$HOST/health!"
+              exit 0
+            fi
+            echo "Waiting for public port 80 response ($i/12)..."
+            sleep 5
+          done
+          echo "⚠️ Public health check timed out. Verify Security Group Inbound Port 80/443 in AWS Console."
