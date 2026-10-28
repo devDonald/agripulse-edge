@@ -2,7 +2,7 @@
 // Screen 1: Camera/Home (giant Snap button + offline pill).
 // Screen 2: Instant Diagnosis & Audio (big icon + dialect voice + 3 recipe cards).
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Linking, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Audio } from 'expo-av';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Network from 'expo-network';
@@ -55,7 +55,7 @@ export default function App() {
     let capturedUri = null;
     try {
       setBusy(true);
-      const pic = await camRef.current?.takePictureAsync({ quality: 0.7 });
+      const pic = await camRef.current?.takePictureAsync({ quality: 0.62, skipProcessing: false });
       if (!pic?.uri) throw new Error('No photo captured');
       capturedUri = pic.uri;
       setPhoto(pic.uri);
@@ -119,7 +119,9 @@ export default function App() {
       {!!pendingN && <Text style={s.queue}>{pendingN} scan(s) dey wait for network…</Text>}
       {screen === 'home' ? (
         <View style={s.home}>
-          <Text style={s.title}>AgriPulse Edge 🌿</Text>
+          <Text style={s.kicker}>FIELD COPILOT · PRIVATE BY DESIGN</Text>
+          <Text style={s.title}>Protect your harvest.</Text>
+          <Text style={s.subtitle}>Take one clear leaf photo. Get a practical next step in your language.</Text>
           <View style={s.langRow}>
             {LANGUAGES.map((l) => (
               <TouchableOpacity key={l.code} onPress={() => setLang(l.code)}
@@ -136,8 +138,9 @@ export default function App() {
           </TouchableOpacity>
           {/* Tap backend label to switch LAN IP without editing source code */}
           <TouchableOpacity onPress={() => { setIpDraft(getBackendUrl()); setIpModal(true); }}>
-            <Text style={s.backend}>🔧 Backend: {backendLabel} (tap to change)</Text>
+            <Text style={s.backend}>Connected service: {backendLabel} · change</Text>
           </TouchableOpacity>
+          <View style={s.privacyRow}><Text style={s.privacyText}>Crop photos are used only to provide your diagnosis.</Text><TouchableOpacity onPress={() => Linking.openURL(`${getBackendUrl()}/privacy`)}><Text style={s.privacyLink}>Privacy</Text></TouchableOpacity></View>
           <Modal visible={ipModal} transparent animationType="slide" onRequestClose={() => setIpModal(false)}>
             <View style={s.modalWrap}>
               <View style={s.modalBox}>
@@ -151,9 +154,8 @@ export default function App() {
                   </TouchableOpacity>
                   <TouchableOpacity style={s.modalSave} onPress={() => {
                     const v = (ipDraft || '').trim() || 'http://192.168.0.115:8000';
-                    setBackendUrl(v);
-                    setBackendLabel(getBackendUrl());
-                    setIpModal(false);
+                    try { setBackendUrl(v); setBackendLabel(getBackendUrl()); setIpModal(false); }
+                    catch (e) { Alert.alert('Invalid address', e.message); }
                   }}>
                     <Text style={s.modalSaveText}>Save</Text>
                   </TouchableOpacity>
@@ -193,24 +195,29 @@ export default function App() {
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#f4faf4' },
-  pill: { margin: 12, padding: 12, borderRadius: 999, alignItems: 'center' },
+  safe: { flex: 1, backgroundColor: '#f4f7f1' },
+  pill: { marginHorizontal: 16, marginTop: 12, marginBottom: 8, padding: 11, borderRadius: 999, alignItems: 'center' },
   pillOffline: { backgroundColor: GREEN },
   pillOnline: { backgroundColor: '#1565c0' },
   pillText: { color: '#fff', fontWeight: '800', fontSize: 15 },
   queue: { textAlign: 'center', color: '#854d0e', fontWeight: '700' },
-  home: { flex: 1, padding: 16 },
-  title: { fontSize: 30, fontWeight: '900', color: GREEN, textAlign: 'center' },
+  home: { flex: 1, padding: 20 },
+  kicker: { color: '#688174', fontSize: 11, fontWeight: '900', letterSpacing: 1.5, textAlign: 'center', marginTop: 8 },
+  title: { fontSize: 36, lineHeight: 40, fontWeight: '900', color: '#10241d', textAlign: 'center', marginTop: 8 },
+  subtitle: { color: '#60736a', textAlign: 'center', fontSize: 15, lineHeight: 22, marginHorizontal: 16, marginTop: 8, marginBottom: 8 },
   langRow: { flexDirection: 'row', justifyContent: 'center', marginVertical: 10, flexWrap: 'wrap' },
   langPill: { borderWidth: 2, borderColor: GREEN, borderRadius: 999, paddingVertical: 8, paddingHorizontal: 12, margin: 4 },
   langActive: { backgroundColor: GREEN },
   langText: { color: GREEN, fontWeight: '800', fontSize: 14 },
   langTextActive: { color: '#fff' },
-  camBox: { height: 320, borderRadius: 20, overflow: 'hidden', backgroundColor: '#000' },
+  camBox: { height: 330, borderRadius: 24, overflow: 'hidden', backgroundColor: '#000', borderWidth: 4, borderColor: '#d8e6d5' },
   cam: { flex: 1 },
-  snap: { backgroundColor: LIME, borderRadius: 24, padding: 26, marginTop: 16, alignItems: 'center', elevation: 4 },
+  snap: { backgroundColor: LIME, borderRadius: 18, padding: 21, marginTop: 16, alignItems: 'center', elevation: 4 },
   snapText: { color: '#052e16', fontSize: 26, fontWeight: '900' },
-  backend: { textAlign: 'center', color: '#888', marginTop: 8, fontSize: 12 },
+  backend: { textAlign: 'center', color: '#537262', marginTop: 14, fontSize: 12, fontWeight: '700' },
+  privacyRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 14, gap: 7 },
+  privacyText: { color: '#829087', fontSize: 10 },
+  privacyLink: { color: GREEN, fontSize: 10, fontWeight: '900', textDecorationLine: 'underline' },
   modalWrap: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', padding: 24 },
   result: { padding: 16, paddingBottom: 40 },
   thumb: { width: '100%', height: 200, borderRadius: 16 },

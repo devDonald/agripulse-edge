@@ -4,25 +4,41 @@
 //
 // Dynamic URL: call setBackendUrl('http://192.168.1.50:8000') from the app's
 // IP switcher — no source-code edits needed in the field.
-let currentBackendUrl = 'http://192.168.0.115:8000'; // autodetected host LAN IP
+// Production is the safe default. The in-app override remains useful for
+// local field testing, but no release build silently points at localhost.
+let currentBackendUrl = 'https://agripulse.zentreeca.org';
 
 export const getBackendUrl = () => currentBackendUrl;
 export const setBackendUrl = (url) => {
-  currentBackendUrl = String(url || '').replace(/\/$/, '');
+  const candidate = String(url || '').trim().replace(/\/$/, '');
+  if (!/^https?:\/\/[^\s]+$/i.test(candidate)) throw new Error('Enter a valid HTTPS or LAN HTTP URL');
+  currentBackendUrl = candidate;
 };
 // Back-compat alias for older imports.
 export const BACKEND_URL = currentBackendUrl;
 
+async function request(url, options = {}, timeoutMs = 45000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    return res;
+  } catch (error) {
+    if (error?.name === 'AbortError') throw new Error('Request timed out. Check your connection and try again.');
+    throw new Error('Unable to reach AgriPulse. Check your connection.');
+  } finally { clearTimeout(timer); }
+}
+
 export async function diagnoseLeaf(photoUri, language = 'pidgin') {
   const form = new FormData();
   form.append('file', { uri: photoUri, name: 'leaf.jpg', type: 'image/jpeg' });
-  const res = await fetch(`${getBackendUrl()}/api/v1/diagnose-edge`, { method: 'POST', body: form });
+  const res = await request(`${getBackendUrl()}/api/v1/diagnose-edge`, { method: 'POST', body: form });
   if (!res.ok) throw new Error(`diagnose failed (${res.status})`);
   return res.json();
 }
 
 export async function fetchAdvisory(query, language, diagnosisContext) {
-  const res = await fetch(`${getBackendUrl()}/api/v1/voice-advisory`, {
+  const res = await request(`${getBackendUrl()}/api/v1/voice-advisory`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ query, language, diagnosis_context: diagnosisContext || null }),
@@ -32,7 +48,7 @@ export async function fetchAdvisory(query, language, diagnosisContext) {
 }
 
 export async function fetchVoiceAudio(text, language) {
-  const res = await fetch(`${getBackendUrl()}/api/v1/voice-synthesize`, {
+  const res = await request(`${getBackendUrl()}/api/v1/voice-synthesize`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text, language }),
@@ -66,7 +82,7 @@ export async function syncQueue(queue, markSynced, farmerId = 'field-phone-1') {
       latitude: s.latitude ?? null, longitude: s.longitude ?? null, timestamp: s.timestamp,
     })),
   };
-  const res = await fetch(`${getBackendUrl()}/api/v1/mobile/sync-batch`, {
+  const res = await request(`${getBackendUrl()}/api/v1/mobile/sync-batch`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error(`sync failed (${res.status})`);
