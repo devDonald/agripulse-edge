@@ -173,6 +173,21 @@ async def _image_diagnosis_reply(image_bytes: bytes, caption: str = "") -> Dict[
 async def process_incoming_whatsapp_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Parses incoming WhatsApp webhook event and generates automated agricultural response."""
     try:
+        # Meta may batch entries, changes, and messages in one delivery. Do
+        # not silently discard events after the first one.
+        events = []
+        for entry_item in payload.get("entry", []) or []:
+            for change_item in entry_item.get("changes", []) or []:
+                value_item = change_item.get("value", {}) or {}
+                for message_item in value_item.get("messages", []) or []:
+                    events.append({"object": payload.get("object"), "entry": [{
+                        "id": entry_item.get("id"),
+                        "changes": [{**change_item, "value": {**value_item, "messages": [message_item]}}],
+                    }]})
+        if len(events) > 1:
+            results = [await process_incoming_whatsapp_payload(event) for event in events]
+            return {"status": "processed_batch", "count": len(results), "results": results}
+
         entry = payload.get("entry", [])[0]
         changes = entry.get("changes", [])[0]
         value = changes.get("value", {})
