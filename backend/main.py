@@ -349,6 +349,11 @@ async def whatsapp_verify(
 async def whatsapp_message_webhook(request: Request):
     """Handles incoming farmer voice notes, photos, and messages via WhatsApp."""
     raw = await request.body()
+    # Meta documents a maximum webhook payload of 3 MB. Reject oversized or
+    # malformed requests before doing any model work; Meta will retry a
+    # non-200 delivery, while valid status-only events are acknowledged below.
+    if len(raw) > 3 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Webhook payload exceeds Meta's 3 MB limit")
     app_secret = os.getenv("WHATSAPP_APP_SECRET", "").strip()
     signature = request.headers.get("X-Hub-Signature-256", "")
     if app_secret:
@@ -360,6 +365,13 @@ async def whatsapp_message_webhook(request: Request):
         payload = json.loads(raw or b"{}")
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid WhatsApp webhook payload")
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Webhook payload must be a JSON object")
+    # WhatsApp Cloud API uses this object discriminator. Keep accepting an
+    # empty object for dashboard health/test calls, but reject unrelated JSON.
+    webhook_object = payload.get("object")
+    if webhook_object not in (None, "whatsapp_business_account"):
+        raise HTTPException(status_code=400, detail="Unsupported webhook object")
     result = await process_incoming_whatsapp_payload(payload)
     return JSONResponse(content=result)
 
