@@ -92,6 +92,21 @@ def field_workspace():
     return FileResponse(os.path.join(WEB_DIR, "app.html"))
 
 
+@app.get("/privacy", include_in_schema=False)
+def privacy_policy():
+    return FileResponse(os.path.join(WEB_DIR, "privacy.html"))
+
+
+@app.get("/terms", include_in_schema=False)
+def terms_of_service():
+    return FileResponse(os.path.join(WEB_DIR, "terms.html"))
+
+
+@app.get("/data-deletion", include_in_schema=False)
+def data_deletion():
+    return FileResponse(os.path.join(WEB_DIR, "data-deletion.html"))
+
+
 @app.middleware("http")
 async def _request_id_log(request: Request, call_next):
     rid = str(uuid.uuid4())[:8]
