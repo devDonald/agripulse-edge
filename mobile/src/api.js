@@ -46,9 +46,21 @@ export async function fetchVoiceAudio(text, language) {
 export async function syncQueue(queue, markSynced, farmerId = 'field-phone-1') {
   const items = await queue.pending();
   if (!items.length) return { synced: 0, remaining: 0 };
+  const prepared = [];
+  for (const item of items) {
+    let scan = item;
+    // Keep disconnected captures useful: once connectivity returns, diagnose
+    // the saved image before syncing instead of storing an unknown placeholder.
+    if (item.photo && item.disease_detected === 'pending diagnosis') {
+      const diag = await diagnoseLeaf(item.photo, item.language);
+      scan = { ...item, crop_name: diag.crop_name, disease_detected: diag.disease_detected,
+        damage_percentage: diag.damage_percentage, severity: diag.severity };
+    }
+    prepared.push(scan);
+  }
   const payload = {
     farmer_id: farmerId,
-    scans: items.map((s) => ({
+    scans: prepared.map((s) => ({
       client_scan_id: s.client_scan_id, crop_name: s.crop_name, disease_detected: s.disease_detected,
       damage_percentage: s.damage_percentage, severity: s.severity, language: s.language,
       latitude: s.latitude ?? null, longitude: s.longitude ?? null, timestamp: s.timestamp,

@@ -1,4 +1,6 @@
 """FastAPI entrypoint: diagnose + segment + voice-advisory + whatsapp webhook + edge benchmark."""
+import hashlib
+import hmac
 import logging
 import os
 import time
@@ -15,7 +17,8 @@ except Exception:
 
 from fastapi import FastAPI, File, HTTPException, Query, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, PlainTextResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ValidationError
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
@@ -29,7 +32,7 @@ logger = logging.getLogger("agripulse.api")
 
 limiter = Limiter(key_func=get_remote_address, default_limits=["120/minute"])
 
-from backend.services.crop_diagnostician import DiagnosisResult, diagnose_image
+from backend.services.crop_diagnostician import DiagnosisResult, diagnose_image, severity_for_damage
 from backend.services.leaf_segmenter import SegmentationResult, segment_leaf_damage
 from backend.services.llama_edge_runner import benchmark_on_device_inference, EXECUTORCH_CONFIGS
 from backend.services.meta_models import BY_ID, MODEL_CATALOG
@@ -73,6 +76,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+WEB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web")
+if os.path.isdir(WEB_DIR):
+    app.mount("/site", StaticFiles(directory=WEB_DIR), name="site")
+
+
+@app.get("/", include_in_schema=False)
+def public_site():
+    return FileResponse(os.path.join(WEB_DIR, "index.html"))
+
+
+@app.get("/app", include_in_schema=False)
+def field_workspace():
+    return FileResponse(os.path.join(WEB_DIR, "app.html"))
 
 
 @app.middleware("http")
@@ -211,6 +228,7 @@ async def diagnose(
         merged = DiagnosisResult(**payload)
         # Fuse: prefer measured segmentation % as authoritative damage estimate
         merged.damage_percentage = max(0, min(100, int(round(seg.damage_percentage))))
+        merged.severity = severity_for_damage(merged.damage_percentage)
         merged.segmentation = seg.model_dump()
         # Confidence gate: below 0.55 the app must ask for a retake, not bluff.
         merged.needs_review = merged.confidence < 0.55
@@ -315,7 +333,18 @@ async def whatsapp_verify(
 @app.post("/api/v1/whatsapp/webhook")
 async def whatsapp_message_webhook(request: Request):
     """Handles incoming farmer voice notes, photos, and messages via WhatsApp."""
-    payload = await request.json()
+    raw = await request.body()
+    app_secret = os.getenv("WHATSAPP_APP_SECRET", "").strip()
+    signature = request.headers.get("X-Hub-Signature-256", "")
+    if app_secret:
+        expected = "sha256=" + hmac.new(app_secret.encode(), raw, hashlib.sha256).hexdigest()
+        if not signature or not hmac.compare_digest(signature, expected):
+            raise HTTPException(status_code=401, detail="Invalid WhatsApp webhook signature")
+    try:
+        import json
+        payload = json.loads(raw or b"{}")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid WhatsApp webhook payload")
     result = await process_incoming_whatsapp_payload(payload)
     return JSONResponse(content=result)
 

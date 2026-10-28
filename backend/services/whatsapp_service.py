@@ -5,14 +5,18 @@ images, and local dialect text messages when within village cellular range.
 """
 import logging
 import os
+import re
+import time
 from typing import Any, Dict, Optional
 
 import httpx
 from dotenv import load_dotenv
 
-from backend.services.crop_diagnostician import diagnose_image
+from backend.services.crop_diagnostician import diagnose_image, severity_for_damage
 from backend.services.leaf_segmenter import segment_leaf_damage
 from backend.services.multilingual_advisor import generate_advisory
+from backend.services.mobile_sync import save_scan
+from backend.services.voice_synthesizer import synthesize_spoken_audio
 
 load_dotenv()
 logger = logging.getLogger("agripulse.whatsapp")
@@ -20,6 +24,31 @@ logger = logging.getLogger("agripulse.whatsapp")
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN", "")
 WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "")
 WHATSAPP_VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN", "agripulse_hackathon_verify_token")
+_processed_messages: Dict[str, float] = {}
+
+
+def _message_language(text: str) -> str:
+    low = (text or "").lower()
+    if re.search(r"\b(hausa|sannu|yaya|ganye|magani)\b", low):
+        return "hausa"
+    if re.search(r"\b(yoruba|bawo|ewe|ọ|ẹ|à|ṣ)\b", low):
+        return "yoruba"
+    if re.search(r"\b(english|please|what|how)\b", low):
+        return "english"
+    return "pidgin"
+
+
+def _claim_message(message_id: str) -> bool:
+    """Ignore webhook retries while keeping the process-local cache bounded."""
+    now = time.time()
+    for key, seen in list(_processed_messages.items()):
+        if now - seen > 86400:
+            _processed_messages.pop(key, None)
+    if message_id and message_id in _processed_messages:
+        return False
+    if message_id:
+        _processed_messages[message_id] = now
+    return True
 
 
 def verify_webhook_token(mode: Optional[str], token: Optional[str], challenge: Optional[str]) -> Optional[str]:
@@ -56,6 +85,35 @@ async def send_whatsapp_text(recipient_phone: str, message: str) -> bool:
         return False
 
 
+async def send_whatsapp_voice(recipient_phone: str, audio_bytes: bytes) -> bool:
+    """Uploads an MP3 and sends it as a WhatsApp audio response."""
+    if not WHATSAPP_TOKEN or not WHATSAPP_PHONE_NUMBER_ID:
+        logger.info("[SIMULATED WHATSAPP VOICE to %s]: %d bytes", recipient_phone, len(audio_bytes))
+        return True
+    headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}"}
+    base = f"https://graph.facebook.com/v21.0/{WHATSAPP_PHONE_NUMBER_ID}"
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            upload = await client.post(
+                f"{base}/media", headers=headers,
+                data={"messaging_product": "whatsapp", "type": "audio/mpeg"},
+                files={"file": ("agripulse-advice.mp3", audio_bytes, "audio/mpeg")},
+            )
+            if upload.status_code not in (200, 201):
+                logger.error("WhatsApp media upload failed: %s", upload.text[:300])
+                return False
+            sent = await client.post(
+                f"{base}/messages",
+                headers={**headers, "Content-Type": "application/json"},
+                json={"messaging_product": "whatsapp", "to": recipient_phone, "type": "audio",
+                      "audio": {"id": upload.json().get("id")}},
+            )
+            return sent.status_code in (200, 201)
+    except Exception as exc:
+        logger.error("Failed to send WhatsApp voice response: %s", exc)
+        return False
+
+
 async def download_whatsapp_media(media_id: str) -> bytes:
     """Downloads photo bytes via Graph API: media ID -> media URL -> bytes."""
     if not WHATSAPP_TOKEN:
@@ -79,17 +137,19 @@ async def _image_diagnosis_reply(image_bytes: bytes, caption: str = "") -> Dict[
     diag = await diagnose_image(image_bytes, "image/jpeg")
     try:
         seg = segment_leaf_damage(image_bytes)
-        damage = seg.get("damage_percentage", diag.damage_percentage)
+        damage = int(round(float(seg.get("damage_percentage", diag.damage_percentage))))
     except Exception:
-        damage = diag.damage_percentage
+        damage = int(round(float(diag.damage_percentage)))
+    severity = severity_for_damage(float(damage)).value
+    language = _message_language(caption)
     advisory = await generate_advisory(
         user_query=(caption.strip() or
                     f"My {diag.crop_name} leaf get problem, wetin I fit do with neem leaves?"),
-        language="pidgin",
+        language=language,
         diagnosis_context={"crop_name": diag.crop_name,
                            "disease_detected": diag.disease_detected,
                            "damage_percentage": damage,
-                           "severity": str(diag.severity)},
+                           "severity": severity},
     )
     reply_text = (
         f"🌿 *AgriPulse Crop Scan Complete* 🌿\n\n"
@@ -97,7 +157,7 @@ async def _image_diagnosis_reply(image_bytes: bytes, caption: str = "") -> Dict[
         f"• *Detected Disease:* {diag.disease_detected}\n"
         f"• *Confidence:* {int(diag.confidence * 100)}%\n"
         f"• *Measured Leaf Damage:* {damage}% (via SAM 2)\n"
-        f"• *Severity:* {str(diag.severity.value if hasattr(diag.severity, 'value') else diag.severity).title()}\n\n"
+        f"• *Severity:* {severity.title()}\n\n"
         f"*{advisory.spoken_reply}*\n\n"
         f"*Step-by-step wetin you go do:*\n"
         + "\n".join(f"{i}. {s}" for i, s in enumerate(advisory.step_by_step_instructions, 1))
@@ -106,7 +166,8 @@ async def _image_diagnosis_reply(image_bytes: bytes, caption: str = "") -> Dict[
     )
     return {"reply_text": reply_text, "crop": diag.crop_name,
             "disease": diag.disease_detected, "damage": damage,
-            "language": advisory.detected_language}
+            "language": advisory.detected_language, "spoken_reply": advisory.spoken_reply,
+            "severity": severity}
 
 
 async def process_incoming_whatsapp_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -123,11 +184,15 @@ async def process_incoming_whatsapp_payload(payload: Dict[str, Any]) -> Dict[str
         msg = messages[0]
         sender_phone = msg.get("from", "unknown")
         msg_type = msg.get("type", "text")
+        message_id = msg.get("id", "")
+        if not _claim_message(message_id):
+            return {"status": "ignored", "reason": "duplicate message", "message_id": message_id}
 
         # 1. Farmer sent a text or voice transcription
         if msg_type == "text":
             body = msg.get("text", {}).get("body", "")
-            advisory = await generate_advisory(user_query=body, language="pidgin")
+            language = _message_language(body)
+            advisory = await generate_advisory(user_query=body, language=language)
 
             reply_text = (
                 f"🌿 *AgriPulse Farm Doctor* 🌿\n\n"
@@ -143,6 +208,7 @@ async def process_incoming_whatsapp_payload(payload: Dict[str, Any]) -> Dict[str
             )
 
             await send_whatsapp_text(sender_phone, reply_text)
+            await send_whatsapp_voice(sender_phone, synthesize_spoken_audio(advisory.spoken_reply, language))
             return {"status": "replied", "type": "text_advisory", "reply": reply_text}
 
         # 2. Farmer sent an image via WhatsApp
@@ -174,10 +240,20 @@ async def process_incoming_whatsapp_payload(payload: Dict[str, Any]) -> Dict[str
                 return {"status": "replied", "type": "image_unavailable",
                         "reply": reply_text, "media_id": media_id}
             out = await _image_diagnosis_reply(image_bytes, caption)
+            save_scan(
+                farmer_id=f"wa-{sender_phone}", client_scan_id=message_id or None,
+                crop_name=out["crop"], disease_detected=out["disease"],
+                damage_percentage=float(out["damage"]), severity=out["severity"],
+                language=out["language"],
+            )
             await send_whatsapp_text(sender_phone, out["reply_text"])
+            voice_sent = await send_whatsapp_voice(
+                sender_phone, synthesize_spoken_audio(out["spoken_reply"], out["language"])
+            )
             return {"status": "replied", "type": "image_diagnosis",
                     "reply": out["reply_text"], "crop": out["crop"],
-                    "disease": out["disease"], "damage": out["damage"]}
+                    "disease": out["disease"], "damage": out["damage"],
+                    "voice_sent": voice_sent, "language": out["language"]}
 
         return {"status": "unsupported_type", "type": msg_type}
 

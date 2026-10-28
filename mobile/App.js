@@ -52,10 +52,12 @@ export default function App() {
       const r = await requestPermission();
       if (!r.granted) { Alert.alert('Camera needed', 'Allow camera so we fit see the sick leaf.'); return; }
     }
+    let capturedUri = null;
     try {
       setBusy(true);
       const pic = await camRef.current?.takePictureAsync({ quality: 0.7 });
       if (!pic?.uri) throw new Error('No photo captured');
+      capturedUri = pic.uri;
       setPhoto(pic.uri);
       const diag = await diagnoseLeaf(pic.uri, lang);
       setResult(diag);
@@ -65,8 +67,9 @@ export default function App() {
       setAdvisory(adv);
       setScreen('result');
     } catch (e) {
-      const entry = await queue.enqueue({ crop_name: 'unknown', disease_detected: 'pending sync',
-        damage_percentage: 0, severity: 'low', language: lang, timestamp: new Date().toISOString() });
+      const entry = await queue.enqueue({ crop_name: 'unknown', disease_detected: 'pending diagnosis',
+        damage_percentage: 0, severity: 'low', language: lang, photo: capturedUri,
+        timestamp: new Date().toISOString() });
       setPendingN(await queue.pendingCount());
       Alert.alert('Saved offline', `No network — scan ${entry.client_scan_id} go sync later. (${e.message})`);
     } finally {
@@ -111,7 +114,7 @@ export default function App() {
   return (
     <SafeAreaView style={s.safe}>
       <View style={[s.pill, online ? s.pillOnline : s.pillOffline]}>
-        <Text style={s.pillText}>{online ? '🌐 Online — syncing' : '⚡ 100% Offline Mode (0KB Data Used)'}</Text>
+        <Text style={s.pillText}>{online ? '🌐 Online — diagnosis ready' : '📥 Offline capture — auto-diagnose on reconnect'}</Text>
       </View>
       {!!pendingN && <Text style={s.queue}>{pendingN} scan(s) dey wait for network…</Text>}
       {screen === 'home' ? (

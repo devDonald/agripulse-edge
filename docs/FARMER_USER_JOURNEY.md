@@ -1,10 +1,10 @@
 # AgriPulse Edge — Farmer User Journey 👩🏾‍🌾
 
-2-tap, zero-jargon path for a low-literacy smallholder (works with zero cellular data).
+2-tap, zero-jargon path for a low-literacy smallholder, with reconnect-safe field capture.
 
 ## The 2-tap journey
 1. **Tap 1 — Snap/Upload leaf** (`📸 CHECK MY LEAF` in PWA, `📸 Snap Sick Leaf` in Expo app).
-   On-device edge model (`/api/v1/diagnose-edge`) identifies crop by leaf shape, fuses SAM 2 lesion %.
+   The connected mobile client calls the diagnostic API; disconnected captures stay on the phone and are diagnosed automatically after reconnection.
 2. **Tap 2 — Auto-play voice note** in the farmer's dialect (Pidgin / Hausa / Yoruba).
    Backend: `/api/v1/voice-advisory` → `/api/v1/voice-synthesize` (MP3 voice note).
 3. **Do the 3 cheap things** — Neem 🌿 / Ash 🪵 / Soap 🧼 recipe cards with numbered steps.
@@ -25,6 +25,7 @@
 - English: simple plain words, no academic jargon.
 
 ## Offline guarantees
-- Diagnosis + segmentation + advisory templates + history all work with **0 KB** data.
+- Photo capture, local queueing, and saved history work without connectivity.
+- The current Expo build diagnoses queued photos after reconnection. True on-device inference remains a native ExecuTorch integration milestone.
 - Every scan carries `client_scan_id`; sync is idempotent — re-sending never duplicates.
 - Queue survives app restarts (AsyncStorage on device, `SYNC_STORE` server-side demo).

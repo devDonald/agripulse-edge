@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="description" content="AgriPulse Edge turns a crop photo into an offline diagnosis and spoken treatment guidance for African smallholder farmers." />
+  <meta name="theme-color" content="#0b2e22" />
+  <title>AgriPulse Edge — Crop intelligence that reaches the field</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/site/styles.css" />
+</head>
+<body>
+  <header class="nav shell">
+    <a class="brand" href="#top" aria-label="AgriPulse Edge home"><span class="brand-mark">A</span><span>AgriPulse <b>Edge</b></span></a>
+    <nav aria-label="Primary navigation"><a href="#solution">Solution</a><a href="#how">How it works</a><a href="#users">For teams</a><a href="#technology">Technology</a></nav>
+    <a class="button button-small" href="/app">Open field workspace <span>↗</span></a>
+    <button class="menu" aria-label="Open menu">☰</button>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="hero-media" role="img" aria-label="A farmer using AgriPulse in a cassava field"></div>
+      <div class="hero-overlay"></div>
+      <div class="shell hero-content">
+        <p class="eyebrow light"><span></span> Offline crop intelligence for African farms</p>
+        <h1>Catch crop disease<br><em>before it spreads.</em></h1>
+        <p class="hero-copy">AgriPulse turns one leaf photo into a trusted diagnosis, a measured damage score, and treatment advice spoken in the farmer’s language—even beyond the network.</p>
+        <div class="hero-actions"><a class="button button-lime" href="/app">Diagnose a crop <span>↗</span></a><a class="text-link light" href="#how">See how it works <span>↓</span></a></div>
+        <div class="hero-proof"><div><strong>0 KB</strong><span>needed for edge diagnosis</span></div><div><strong>4 languages</strong><span>Pidgin, Hausa, Yoruba, English</span></div><div><strong>3 channels</strong><span>Mobile, web and WhatsApp</span></div></div>
+      </div>
+      <div class="signal-card"><span class="pulse"></span><div><small>FIELD STATUS</small><strong>Diagnosis ready offline</strong></div><b>38ms</b></div>
+    </section>
+
+    <section class="intro shell" id="solution">
+      <p class="section-number">01 — THE GAP</p>
+      <div><h2>The best crop advice is useless if it cannot reach the field.</h2><p>Connectivity drops. Extension teams are stretched. Technical guidance arrives late and in the wrong language. AgriPulse closes the last mile with one system designed around how farmers and field teams actually work.</p></div>
+    </section>
+
+    <section class="journey shell" id="how">
+      <div class="section-heading"><div><p class="eyebrow"><span></span> One clear field workflow</p><h2>From leaf to action<br>in under a minute.</h2></div><p>No forms to complete. No agronomy vocabulary to learn. The intelligence stays powerful while the experience stays simple.</p></div>
+      <div class="steps">
+        <article class="step-card feature"><div class="step-visual scan"><div class="scan-frame"><span></span><span></span><span></span><span></span><b>Leaf detected</b></div></div><div class="step-copy"><span>01</span><h3>Capture the leaf</h3><p>Point the camera at an affected leaf. The app checks image quality and works online or offline.</p></div></article>
+        <article class="step-card"><div class="step-visual diagnosis"><div class="diagnosis-chip"><i>!</i><div><small>LIKELY CONDITION</small><b>Cassava mosaic</b><span>Moderate · 24% affected</span></div></div></div><div class="step-copy"><span>02</span><h3>Understand the damage</h3><p>Meta vision models identify the condition while SAM measures the affected leaf area.</p></div></article>
+        <article class="step-card"><div class="step-visual voice"><div class="wave">▮ ▮▮ ▮▮▮ ▮▮ ▮ ▮▮▮ ▮▮ ▮</div><button>▶</button><div><small>PIDGIN ADVICE</small><b>“Remove the bad leaves…”</b></div></div><div class="step-copy"><span>03</span><h3>Hear what to do next</h3><p>Practical treatment steps arrive as text and a voice note in the farmer’s preferred language.</p></div></article>
+      </div>
+    </section>
+
+    <section class="users" id="users"><div class="shell">
+      <div class="section-heading light"><div><p class="eyebrow light"><span></span> One network, three experiences</p><h2>Built for every person<br>protecting the harvest.</h2></div><p>Each user gets exactly the tools they need, while every diagnosis strengthens the same shared picture.</p></div>
+      <div class="user-grid">
+        <article><span class="user-icon">◒</span><small>FOR FARMERS</small><h3>Guidance without a learning curve.</h3><p>Send a photo through WhatsApp or use the mobile app. Hear a clear treatment in Pidgin, Hausa, Yoruba or English.</p><a href="/app?mode=field">Open farmer experience →</a></article>
+        <article class="active"><span class="user-icon">⌁</span><small>FOR EXTENSION TEAMS</small><h3>A field clinic in every pocket.</h3><p>Diagnose offline, review the lesion map, save visits and sync every farm record when connectivity returns.</p><a href="/app?mode=field">Open field workspace →</a></article>
+        <article><span class="user-icon">⌗</span><small>FOR COOPERATIVES</small><h3>See risk before it becomes loss.</h3><p>Track incoming cases, spot disease patterns and turn field observations into coordinated response.</p><a href="/app?mode=command">Open command center →</a></article>
+      </div>
+    </div></section>
+
+    <section class="technology shell" id="technology">
+      <div class="tech-copy"><p class="eyebrow"><span></span> Powered by Meta AI</p><h2>Cloud depth.<br>Edge resilience.</h2><p>AgriPulse routes each task to the right model. Deep visual reasoning happens in the cloud when connected. ExecuTorch keeps essential diagnosis available on device when the signal disappears.</p><ul><li><span>✓</span><div><b>Llama vision reasoning</b><small>Grounded crop and symptom interpretation</small></div></li><li><span>✓</span><div><b>Segment Anything</b><small>Pixel-level damage measurement</small></div></li><li><span>✓</span><div><b>ExecuTorch edge inference</b><small>Private, low-latency offline diagnosis</small></div></li></ul></div>
+      <div class="architecture"><div class="arch-title"><span>AGRICULTURAL INTELLIGENCE LAYER</span><i>LIVE</i></div><div class="arch-row"><div><small>INPUT</small><b>Leaf image</b></div><span>→</span><div><small>VISION</small><b>Llama</b></div><span>→</span><div><small>MEASURE</small><b>SAM</b></div></div><div class="arch-core"><span>⌁</span><div><small>ADAPTIVE ROUTER</small><b>Online when available.<br>On-device when it matters.</b></div></div><div class="arch-row bottom"><div><small>OUTPUT</small><b>Diagnosis</b></div><span>+</span><div><small>ACTION</small><b>Treatment</b></div><span>+</span><div><small>ACCESS</small><b>Voice</b></div></div></div>
+    </section>
+
+    <section class="cta"><div class="shell"><p class="eyebrow light"><span></span> Ready for the field</p><h2>Every healthy harvest<br>starts with an early signal.</h2><p>Put practical crop intelligence in the hands of the people closest to the problem.</p><a class="button button-lime" href="/app">Launch AgriPulse <span>↗</span></a></div></section>
+  </main>
+  <footer class="shell"><a class="brand" href="#top"><span class="brand-mark">A</span><span>AgriPulse <b>Edge</b></span></a><p>Offline-first crop intelligence for resilient food systems.</p><span>Built with Meta AI · 2026</span></footer>
+  <script src="/site/site.js"></script>
+</body></html>

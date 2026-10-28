@@ -1,35 +1,23 @@
-# AgriPulse Edge — Farmer Mobile Client 📱🌿
+# AgriPulse Edge — Expo field client
 
-Ultra-simple, offline-first React Native / Expo app for smallholder farmers.
-2-tap journey: **Snap Sick Leaf → Hear Voice Advice**. No jargon, no typing.
+The Expo client gives extension workers a camera-first workflow with persistent offline capture.
 
-## Screens
-1. **Camera / Home** — giant `📸 Snap Sick Leaf` button, `⚡ 100% Offline Mode (0KB Data Used)` pill,
-   language pills (Pidgin / Hausa / Yoruba), gallery fallback.
-2. **Instant Diagnosis & Audio** — big disease icon + simple name, `🔊 Play Voice Advice` button,
-   3 visual recipe cards (Neem / Ash / Soap), `💾 Save to Offline History`.
+## Current behavior
 
-## Network sync
-- Diagnosis runs **on-device first** (bundled edge model stub → falls back to queued server sync).
-- `expo-network` watches connectivity; when online, `offlineQueue.js` auto-pushes queued scans to
-  `POST /api/v1/mobile/sync-batch` and marks them synced in AsyncStorage. Zero farmer action needed.
+1. **Connected:** capture a leaf, call the diagnostic API, receive diagnosis and remedies, then request spoken advice.
+2. **Disconnected:** retain the local photo and queue entry in AsyncStorage.
+3. **Reconnected:** diagnose each queued photo, sync the real result to `/api/v1/mobile/sync-batch`, and remove acknowledged entries.
 
-## Configure backend
-```js
-// src/api.js
-export const BACKEND_URL = 'http://YOUR_LAPTOP_IP:8000'; // phone + laptop on same Wi-Fi
-```
+This is reconnect-safe offline capture, not yet true on-device inference. True zero-data diagnosis requires packaging and invoking an ExecuTorch `.pte` model through a native module or Expo development build.
 
-## Run
+## Configure and run
+
+Tap the backend address in the app to set the deployed HTTPS API or a laptop LAN URL.
+
 ```bash
 cd mobile
 npm install
 npx expo start
-# scan the QR code with Expo Go (Android) or Camera (iOS)
 ```
 
-## Files
-- `App.js` — both screens + navigation state (no router needed, keeps bundle tiny)
-- `src/api.js` — `diagnoseLeaf()`, `fetchAdvisory()`, `playableAudio()`, `syncQueue()`
-- `src/offlineQueue.js` — AsyncStorage queue: `enqueue()`, `pending()`, `markSynced()`, `history()`
-- `src/language.js` — Pidgin/Hausa/Yoruba labels + recipe icons
+For a competition demo, prefer a stable deployed HTTPS API. A hard-coded private LAN address is only suitable for local development.

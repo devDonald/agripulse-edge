@@ -1,6 +1,7 @@
 """Core visual crop diagnostic service (Meta Model API + On-Device ExecuTorch Edge Classifier)."""
 import asyncio
 import base64
+import io
 import json
 import logging
 import os
@@ -50,6 +51,15 @@ class Severity(str, Enum):
     low = "low"
     moderate = "moderate"
     severe = "severe"
+
+
+def severity_for_damage(damage_percentage: float) -> Severity:
+    """Canonical severity policy shared by every delivery channel."""
+    if damage_percentage <= 20:
+        return Severity.low
+    if damage_percentage <= 50:
+        return Severity.moderate
+    return Severity.severe
 
 
 class OrganicRemedy(BaseModel):
@@ -171,8 +181,21 @@ def encode_image_to_base64(image_bytes: bytes) -> str:
     return base64.b64encode(image_bytes).decode("utf-8")
 
 
-def _get_remedies_for_crop(crop_name: str) -> List[OrganicRemedy]:
+def _get_remedies_for_crop(crop_name: str, disease: str = "") -> List[OrganicRemedy]:
     crop_key = crop_name.lower().strip()
+    disease_key = (disease or "").lower()
+    if "maize" in crop_key and "armyworm" in disease_key:
+        return [OrganicRemedy(**r) for r in [
+            REMEDY_DATABASE["maize"][1],
+            {
+                "title": "Neem Whorl Treatment",
+                "preparation": "Pound 500g fresh neem leaves, soak in 4L clean water overnight and sieve. Add 1 teaspoon local black soap. Pour or spray a small amount directly into each affected maize whorl at sunset, then repeat after 4 days.",
+            },
+            {
+                "title": "Hand-pick and Scout Early",
+                "preparation": "Inspect 10 plants in each farm row twice weekly. Hand-pick visible egg masses and young caterpillars, crush them, and remove badly shredded whorls. Treat neighbouring plants before larvae grow large and burrow deeper.",
+            },
+        ]]
     for key in REMEDY_DATABASE:
         if key in crop_key:
             return [OrganicRemedy(**r) for r in REMEDY_DATABASE[key]]
@@ -261,7 +284,7 @@ def _diagnosis_from_verdict_text(verdict: str, edge_probe) -> "DiagnosisResult":
         damage_percentage=edge_probe.damage_percentage,
         severity=Severity(edge_probe.severity),
         symptoms=edge_probe.symptoms,
-        organic_remedies=_get_remedies_for_crop(crop),
+        organic_remedies=_get_remedies_for_crop(crop, disease),
     )
 
 
@@ -301,7 +324,7 @@ async def diagnose_image(
     # was explicitly selected, return the genuine on-device classification
     if not cloud_live:
         edge = edge_probe
-        remedies = _get_remedies_for_crop(edge.crop_name)
+        remedies = _get_remedies_for_crop(edge.crop_name, edge.disease_detected)
         metrics = EdgeMetrics(inference_latency_ms=edge.metrics.inference_latency_ms)
         if edge_requested:
             metrics.model_name = (
@@ -371,7 +394,8 @@ async def diagnose_image(
                 severity=Severity(str(parsed.get("severity", edge_probe.severity)).lower()),
                 symptoms=list(parsed.get("symptoms", edge_probe.symptoms)) or edge_probe.symptoms,
                 organic_remedies=_get_remedies_for_crop(
-                    str(parsed.get("crop_name", edge_probe.crop_name))),
+                    str(parsed.get("crop_name", edge_probe.crop_name)),
+                    str(parsed.get("disease_detected", edge_probe.disease_detected))),
             )
         except (ValueError, KeyError, TypeError):
             # muse-image reasons in prose and truncates before JSON — mine its
@@ -468,7 +492,7 @@ async def diagnose_image(
     logger.warning(f"Meta API call failed ({last_error}), falling back to on-device edge classification.")
     # Graceful fallback: reuse the gatekeeper probe (identical result, no double work)
     edge = edge_probe
-    remedies = _get_remedies_for_crop(edge.crop_name)
+    remedies = _get_remedies_for_crop(edge.crop_name, edge.disease_detected)
     return DiagnosisResult(
         crop_name=edge.crop_name,
         disease_detected=edge.disease_detected,

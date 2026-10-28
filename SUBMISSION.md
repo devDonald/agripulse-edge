@@ -1,59 +1,64 @@
-# AgriPulse Edge 🌿 — Hackathon Submission
+# AgriPulse Edge — Hackathon Submission
 
-> **For the Cerebral Valley / Devpost form** — copy each section into the matching field.
+## One-line pitch
 
-## Project Title
-**AgriPulse Edge — Offline-First AI Crop Doctor & Multilingual Voice Copilot for African Smallholders**
+AgriPulse turns one crop photo into a measured diagnosis and spoken field action, delivered through web, mobile, or WhatsApp in Pidgin, Hausa, Yoruba, and simple English.
 
-## Tagline
-Snap a sick leaf with zero data — hear the cure in Pidgin, Hausa, or Yoruba. Llama 3.2 Vision + SAM 2 + ExecuTorch, in the farmer's pocket.
+## Track and theme
 
-## Category
-**Build for Your World** (Agriculture & Food Security)
+- **Recommended track:** Startup if the team intends to continue as a product; Indie only if submitting as an individual.
+- **Theme:** Build for Your World.
+- **Why it fits:** It applies Meta’s newest image, reasoning, segmentation, and messaging capabilities to crop protection in low-connectivity communities.
 
-## Inspiration
-80% of Sub-Saharan food comes from smallholders losing up to 40% of yields to Fall Armyworm,
-Cassava Mosaic, and Blight. Cloud-only AI fails them twice: rural farms have zero/sporadic data,
-and extension manuals are academic English. We met "Mama Nkechi" — literate in farming, not in
-English PDFs. AgriPulse Edge meets her where she is: camera, voice, WhatsApp — offline first.
+## What works in the submitted build
 
-## What it does (3-Tier Architecture)
-| Tier | Channel | User | Experience |
-| :--- | :--- | :--- | :--- |
-| 1. Farmer | WhatsApp voice/photo (`POST /api/v1/whatsapp/webhook`) | Low-literacy farmer | Zero install; dialect voice-note diagnosis + neem/ash recipes |
-| 2. Extension | Expo mobile app (`mobile/`) + PWA (`frontend/mobile_farmer.py` :8502) | Youth agripreneur w/ Android | Giant Snap button, offline queue, auto-sync to `/api/v1/mobile/sync-batch` |
-| 3. Cooperative | Web dashboard (`frontend/app.py` :8501) | Coop manager w/ laptop | SAM 2 lesion maps, outbreak history (`GET /api/v1/mobile/history`), NPU telemetry |
+1. A farmer or extension officer submits one leaf photo through web, Expo mobile, or WhatsApp.
+2. A local visual gate rejects non-leaf photos and provides a crop-shape guard before paid inference.
+3. Muse Image is attempted for pixel-grounded diagnosis when Meta Model API credentials are configured. Muse reasoning refines pathology while the crop guard prevents cross-crop hallucinations.
+4. SAM 3.1 is attempted for lesion segmentation; a deterministic spatial-mask fallback keeps the demo functional if the remote model is unavailable.
+5. One severity policy converts measured damage into low, moderate, or severe across every channel.
+6. The response includes three practical actions and spoken guidance in four languages.
+7. Web, mobile, and WhatsApp cases enter one idempotent cooperative record stream.
 
-2-tap journey: **Snap Sick Leaf → Play Voice Advice**. Crop identified by leaf *shape* (never
-maize-as-cassava), damage measured by SAM 2, cure spoken in dialect with 3 organic recipe cards.
+## Channel behavior
 
-## The Meta AI Stack Used
-- **Llama 3.2 90B Vision** (Meta Model API) — cloud pathology diagnosis + symptom reasoning.
-- **Llama 3.2 3B / 1B via ExecuTorch (INT8/INT4)** — on-device zero-data inference (0 KB, ~38 ms,
-  `/api/v1/diagnose-edge`, live NPU benchmark at `/api/v1/edge/benchmark`).
-- **Segment Anything 2 (SAM 2)** — pixel-accurate chlorosis/necrosis masks + damage % (`/api/v1/segment`).
-- **WhatsApp Business Cloud API** — webhook verify + inbound text/image dispatch in Pidgin.
+| Channel | Primary user | Demonstrated behavior |
+| --- | --- | --- |
+| Web clinic | Extension officer | Upload, diagnosis, lesion overlay, severity, remedies, voice playback, saved record |
+| Expo mobile | Field worker | Camera capture, online diagnosis, offline photo queue, automatic diagnosis and sync after reconnection |
+| WhatsApp | Farmer | Photo download, diagnosis, text response, language-aware voice audio, signed webhook, retry deduplication |
+| Command center | Cooperative lead | Operational overview, synced field records, and model status |
 
-## How to run (judges, 60 seconds)
-```bash
-git clone <repo> && cd agri-diagnose-backend
-pip install -r requirements.txt
-bash scripts/start_all.sh
-# Backend:   http://localhost:8000/docs
-# Dashboard: http://localhost:8501
-# Farmer PWA: http://localhost:8502
-```
+## Meta technology used
 
-## 2-Minute Demo Video Script
-| Time | Shot | Script |
-| :--- | :--- | :--- |
-| 0:00–0:25 | Problem montage (field, no-signal icon, English manual) | "Smallholders lose 40% of crops. No data, no English — cloud AI never reaches them." |
-| 0:25–0:55 | Dashboard :8501 → ✈️ Offline Edge → 🍃 Cassava preset → Diagnose | "Airplane mode. One tap. Instant diagnosis with 0KB data — measured 45% damage." |
-| 0:55–1:20 | SAM 2 opacity slider (yellow/red mask) | "SAM 2 maps every lesion pixel — yellow chlorosis, red necrosis. No guessing." |
-| 1:20–1:45 | Voice Copilot → Pidgin → ▶️ Play (audio audible) | "And she hears the cure in her own tongue — neem spray, ash, soap." |
-| 1:45–2:00 | Farmer PWA :8502 on phone + WhatsApp sim + Edge telemetry | "Phone, WhatsApp, or coop dashboard — same brain. Built for her world. 🌿" |
+- **Muse Image:** pixel-grounded visual diagnosis when configured.
+- **Muse Spark/Wonder:** pathology reasoning and structured multilingual extension guidance.
+- **SAM 3.1:** lesion segmentation and damage quantification when configured.
+- **WhatsApp Business Cloud API:** zero-install image intake and audio response.
+- **Edge path:** a measurable local crop gate and benchmark harness. The Expo build queues photos offline and diagnoses them on reconnect; do not claim it runs ExecuTorch locally until a `.pte` runtime is shipped on the phone.
 
-## Tests & proof
-- `python3 -m pytest tests/test_robustness.py` → 18/18 passing (incl. maize-never-cassava shape tests).
-- `MOCK_MODE=true python3 scripts/test_mobile_sync.py` → ALL PASS (edge + voice + audio + sync batch + history).
-- `bash scripts/start_all.sh --test` → all 3 services boot cleanly.
+## Reliability evidence
+
+- Upload validation and non-leaf rejection before paid model calls.
+- Cloud retry and deterministic fallback behavior.
+- Confidence gate for uncertain diagnoses.
+- Canonical damage-to-severity policy.
+- Idempotent mobile sync and WhatsApp retry suppression.
+- WhatsApp signature verification when `WHATSAPP_APP_SECRET` is set.
+- Correlation IDs, rate limits, readiness checks, and persistent field records.
+- Automated robustness and cross-channel contract tests.
+
+## Two-minute judging demo
+
+| Time | Show | Judge takeaway |
+| --- | --- | --- |
+| 0:00–0:20 | Farmer problem and three-channel architecture | This is a last-mile product, not a classifier demo. |
+| 0:20–0:50 | Upload the bundled maize or cassava image in `/app` | The core diagnosis works live. |
+| 0:50–1:10 | Show lesion overlay, measured damage, engine label, and matching severity | The output is explainable and consistent. |
+| 1:10–1:30 | Play Pidgin, Hausa, or Yoruba guidance | Model output becomes accessible action. |
+| 1:30–1:50 | Send the same image through WhatsApp and show text plus voice | One intelligence layer reaches a familiar channel. |
+| 1:50–2:00 | Show the saved record and green contract tests | The prototype holds together as a system. |
+
+## Honest boundary
+
+AgriPulse is decision support, not a replacement for laboratory confirmation or a qualified agronomist. Low-confidence scans ask for a retake or expert review. Treatment guidance should be validated with local extension partners before broad deployment.

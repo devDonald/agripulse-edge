@@ -2,7 +2,9 @@
 ### Offline-First Crop Diagnostic & Multilingual Voice Copilot for Smallholder Farmers
 > **Built for the Meta Global AI Developer Hackathon 2026**  
 > **Track:** *Build for Your World / Agriculture & Food Security*  
-> **Core Tech:** Meta Model API (`Llama-3.2-90B-Vision` / `Muse Family`), Meta ExecuTorch (`Llama-3.2-1B/3B INT8`), Meta Segment Anything (`SAM 2 / SAM 3.1`), Meta WhatsApp Business Cloud API.
+> **Core Tech:** Meta Model API (Muse Image + Muse Spark/Wonder), SAM 3.1, Meta WhatsApp Business Cloud API, and a reconnect-safe Expo field client.
+
+> **Implementation boundary:** the web/API pipeline has a local edge-profile fallback and ExecuTorch benchmark harness. The current Expo client captures and queues photos offline, then diagnoses and syncs them after reconnection. It does not yet ship a native `.pte` runtime; see [`docs/COMPETITION_STRATEGY.md`](docs/COMPETITION_STRATEGY.md).
 
 ---
 
@@ -25,14 +27,14 @@ Most AI agricultural tools fail in the field due to two hard realities:
                      ┌───────────────┴───────────────┐
                      ▼                               ▼
        [In Field: Zero Cellular Data]     [In Village: Cell Coverage]
-       ✈️ 100% Offline Edge Mode          🌐 Online WhatsApp & Web Mode
+       📥 Offline Capture + Queue          🌐 Online WhatsApp & Web Mode
                      │                               │
        ┌─────────────▼─────────────┐     ┌───────────▼─────────────┐
-       │   Meta ExecuTorch Engine  │     │   Meta Model API Cloud  │
-       │   Llama-3.2-3B (INT8 AWQ) │     │ Llama-3.2-90B / Muse    │
-       │   + SAM 2 Mobile Masking  │     │ + SAM 2/3.1 Mask Engine │
-       │   • 0 KB Cellular Data    │     │ + WhatsApp Webhook      │
-       │   • 38.6 ms Latency       │     │ • Dialect Voice Audio   │
+       │  Expo Persistent Queue    │     │   Meta Model API Cloud  │
+       │  • Keeps local photo URI  │     │ Muse Image + Reasoning  │
+       │  • Auto-runs on reconnect │     │ + SAM 3.1 Mask Engine   │
+       │  • Idempotent batch sync  │     │ + WhatsApp Text/Audio   │
+       │  • No lost field capture  │     │ • Shared Record Stream  │
        │   • 142 MB Peak RAM       │     │ • Organic Remedies DB   │
        └─────────────┬─────────────┘     └───────────┬─────────────┘
                      │                               │
@@ -52,9 +54,9 @@ Most AI agricultural tools fail in the field due to two hard realities:
 
 | Model / Technology | Deployment Tier | Purpose in AgriPulse Edge | Key Advantage |
 | :--- | :--- | :--- | :--- |
-| **Meta Llama 3.2 90B Vision / Muse Family** | Cloud API (`dev.meta.ai`) | High-accuracy pathology diagnosis & deep symptom reasoning | Deep visual grounding & foliar symptom recognition |
-| **Meta Llama 3.2 3B / 1B Edge** | On-Device (`ExecuTorch`) | Offline edge diagnosis running directly on smartphone NPU | **0 KB data consumed**, sub-40ms latency in field |
-| **Meta Segment Anything 2 & 3.1 (`SAM 2`)** | Cloud & Edge | Pixel-accurate lesion segmentation & canopy damage quantification | Measures exact % leaf area lost to chlorosis & necrosis |
+| **Muse Image + Muse Spark/Wonder** | Meta Model API | Pixel-grounded diagnosis plus structured pathology reasoning | Current hackathon model family with visible usage metadata |
+| **Local crop-shape gate** | API edge profile | Rejects non-leaf inputs and guards against crop hallucination | Deterministic fallback and paid-call gate |
+| **SAM 3.1** | Meta Model API | Lesion segmentation and damage quantification | Falls back to a clearly labelled local spatial mask |
 | **Meta WhatsApp Business API** | Conversational Channel | Automated messaging, leaf image diagnosis, and dialect voice notes | No app installation needed; 100% familiar interface |
 
 ---
@@ -91,6 +93,19 @@ Start all 3 services together (Backend :8000, Dashboard :8501, Farmer PWA :8502)
 ```bash
 bash scripts/start_all.sh
 ```
+
+### New unified product experience
+
+The FastAPI service now ships the production-facing website and role-aware workspace directly:
+
+- **Public website:** `http://localhost:8000/` — product story, user journeys, and Meta AI architecture.
+- **Field workspace:** `http://localhost:8000/app` — responsive crop clinic for extension teams.
+- **Cooperative command center:** `http://localhost:8000/app?mode=command` — operational overview.
+- **API documentation:** `http://localhost:8000/docs` — integration and judge verification.
+
+The crop clinic is connected to the existing diagnosis, SAM lesion analysis, multilingual advisory,
+voice synthesis, mobile history, and model catalog endpoints. The `web/` directory is framework-free,
+so the same Render service deploys the API and experience without a separate frontend build pipeline.
 
 Or run services individually:
 
