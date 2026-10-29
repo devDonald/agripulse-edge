@@ -159,7 +159,7 @@ docker run -p 8000:8000 --env-file .env agripulse-edge:latest
 - **Visual Grounding & Morphological Blade-Priority Classifier:**
   - Robust shape-prior classifier preventing false positives (e.g., maize vs. cassava leaf geometry).
   - High-confidence distinction between Southern Corn Rust and Gray Leaf Spot (GLS).
-  - Proven **44/44 orientation stability** across leaf rotations, flips, and varying angles.
+  - **11 crops / ~30 diseases** across West African staples (cassava, maize, tomato, yam, cowpea, sorghum, rice, pepper, okra, groundnut, sweet potato) with full stability matrix coverage.
 - **Idempotent SQLite Sync Store:**
   - `POST /api/v1/mobile/sync-batch` processes offline field scans with client-generated IDs (`client_scan_id`).
   - SQLite WAL mode ensures non-blocking concurrent writes with zero duplicate entries.
@@ -198,7 +198,7 @@ The Meta WhatsApp Cloud webhook stays live alongside — belt and suspenders.
 
 ## 🧪 Comprehensive Test Suite
 
-### Automated Robustness Tests (19/19 Passing)
+### Automated Robustness Tests (21/21 Passing)
 ```bash
 MOCK_MODE=true python3 -m pytest tests/test_robustness.py -v
 ```
@@ -208,6 +208,8 @@ Tests cover:
 - `test_diagnose_cassava_mosaic` — Cassava Mosaic pathology detection & remedies.
 - `test_diagnose_maize_fall_armyworm` — Armyworm chewing damage detection.
 - `test_diagnose_tomato_early_blight` — Concentric target-board spot detection.
+- `test_diagnose_new_crops` — All 8 new crops (yam, cowpea, sorghum, rice, pepper, okra, groundnut, sweet potato) with correct crop + remedies.
+- `test_expected_crop_hint_agrees` — Mobile crop-picker hint agreement flag (leaf stays authoritative).
 - `test_diagnose_healthy_leaf` — High-vigor leaf verification.
 - `test_diagnose_edge_zero_data` — Zero-data ExecuTorch telemetry validation.
 - `test_reject_non_leaf_image` — Non-vegetative input rejection.
@@ -220,7 +222,7 @@ Tests cover:
 
 ### Stability Matrix & Offline Sync Verification
 ```bash
-# 44/44 rotation and crop stability verification
+# 11 crops x 11 distortions: originals fully strict, new crops lighting-strict
 python3 scripts/test_stability_matrix.py
 
 # Idempotent batch sync and history test
