@@ -257,9 +257,32 @@ async def diagnose(
 async def diagnose_edge(
     request: Request,
     file: UploadFile = File(..., description="Crop leaf photo for offline edge diagnosis"),
+    expected_crop: Optional[str] = Query(
+        default=None,
+        description="Farmer-selected crop hint (weak prior only — leaf shape stays authoritative)",
+    ),
 ):
     """Guaranteed zero-data offline edge diagnosis using simulated ExecuTorch on-device pipeline."""
-    return await diagnose(request, file, force_offline=True)
+    resp = await diagnose(request, file, force_offline=True)
+    if expected_crop:
+        try:
+            import json as _json
+
+            body = _json.loads(resp.body.decode())
+            hint = expected_crop.strip().lower()
+            actual = str(body.get("crop_name", "")).lower()
+            if hint and actual and hint != actual and hint in (
+                    "cassava", "maize", "tomato", "yam", "cowpea", "sorghum",
+                    "rice", "pepper", "okra", "groundnut", "sweet_potato"):
+                body["hint_agree"] = False
+                body["hint_note"] = (
+                    f"You picked {hint} but the leaf reads {actual} — trusting the leaf.")
+            else:
+                body["hint_agree"] = True
+            return JSONResponse(content=body)
+        except Exception:
+            pass
+    return resp
 
 
 @app.post("/api/v1/segment", response_model=SegmentationResult)

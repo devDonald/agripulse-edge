@@ -7,7 +7,7 @@ import { Audio } from 'expo-av';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Network from 'expo-network';
 import { diagnoseLeaf, fetchAdvisory, fetchVoiceAudio, getBackendUrl, setBackendUrl, syncQueue } from './src/api';
-import { LANGUAGES, RECIPE_ICONS, STRINGS, simpleName } from './src/language';
+import { CROPS, LANGUAGES, RECIPE_ICONS, STRINGS, simpleName } from './src/language';
 import * as queue from './src/offlineQueue';
 
 const GREEN = '#0b4d2e';
@@ -16,6 +16,7 @@ const LIME = '#22c55e';
 export default function App() {
   const [screen, setScreen] = useState('home');
   const [lang, setLang] = useState('pidgin');
+  const [crop, setCrop] = useState(CROPS[0]);
   const [photo, setPhoto] = useState(null);
   const [result, setResult] = useState(null);
   const [advisory, setAdvisory] = useState(null);
@@ -59,7 +60,10 @@ export default function App() {
       if (!pic?.uri) throw new Error('No photo captured');
       capturedUri = pic.uri;
       setPhoto(pic.uri);
-      const diag = await diagnoseLeaf(pic.uri, lang);
+      const diag = await diagnoseLeaf(pic.uri, lang, crop.code);
+      if (crop.code && diag.crop_name && diag.crop_name.toLowerCase() !== crop.code) {
+        diag.hint_note = `You picked ${crop.label} but I see ${diag.crop_name} — trusting the leaf.`;
+      }
       setResult(diag);
       const ctx = { crop_name: diag.crop_name, disease_detected: diag.disease_detected,
                     damage_percentage: diag.damage_percentage, severity: diag.severity };
@@ -133,6 +137,16 @@ export default function App() {
           <View style={s.camBox}>
             <CameraView ref={camRef} style={s.cam} facing="back" />
           </View>
+          <Text style={s.cropLabel}>What crop is this? (helps framing — leaf decides)</Text>
+          <View style={s.cropRow}>
+            {CROPS.map((c) => (
+              <TouchableOpacity key={c.label} onPress={() => setCrop(c)}
+                style={[s.cropPill, crop.label === c.label && s.langActive]}>
+                <Text style={[s.langText, crop.label === c.label && s.langTextActive]}>{c.emoji} {c.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={s.cropTip}>📷 {crop.tip}</Text>
           <TouchableOpacity style={s.snap} onPress={onSnap} disabled={busy}>
             {busy ? <ActivityIndicator color="#fff" size="large" /> : <Text style={s.snapText}>{t.snap}</Text>}
           </TouchableOpacity>
@@ -177,6 +191,7 @@ export default function App() {
             <Text style={s.playText}>{t.play}</Text>
           </TouchableOpacity>
           {!!advisory?.spoken_reply && <Text style={s.reply}>“{advisory.spoken_reply}”</Text>}
+          {!!result?.hint_note && <Text style={s.hintNote}>⚠️ {result.hint_note}</Text>}
           <Text style={s.how}>{t.howTo}</Text>
           {(result?.organic_remedies || []).slice(0, 3).map((r, i) => (
             <View key={i} style={s.card}>
@@ -212,6 +227,10 @@ const s = StyleSheet.create({
   langTextActive: { color: '#fff' },
   camBox: { height: 330, borderRadius: 24, overflow: 'hidden', backgroundColor: '#000', borderWidth: 4, borderColor: '#d8e6d5' },
   cam: { flex: 1 },
+  cropLabel: { color: GREEN, fontWeight: '900', fontSize: 14, marginTop: 12, textAlign: 'center' },
+  cropRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', marginTop: 6 },
+  cropPill: { borderWidth: 2, borderColor: GREEN, borderRadius: 999, paddingVertical: 6, paddingHorizontal: 10, margin: 3 },
+  cropTip: { color: '#537262', fontSize: 13, fontWeight: '700', textAlign: 'center', marginTop: 6 },
   snap: { backgroundColor: LIME, borderRadius: 18, padding: 21, marginTop: 16, alignItems: 'center', elevation: 4 },
   snapText: { color: '#052e16', fontSize: 26, fontWeight: '900' },
   backend: { textAlign: 'center', color: '#537262', marginTop: 14, fontSize: 12, fontWeight: '700' },
@@ -228,6 +247,7 @@ const s = StyleSheet.create({
   play: { backgroundColor: '#facc15', borderRadius: 20, padding: 22, marginTop: 12, alignItems: 'center' },
   playText: { fontSize: 20, fontWeight: '900', color: '#422006' },
   reply: { fontStyle: 'italic', fontSize: 17, color: '#123f27', marginTop: 10 },
+  hintNote: { fontSize: 14, color: '#854d0e', fontWeight: '800', marginTop: 8, textAlign: 'center' },
   how: { fontSize: 20, fontWeight: '900', color: GREEN, marginTop: 14 },
   card: { backgroundColor: '#fff', borderLeftWidth: 6, borderLeftColor: LIME, borderRadius: 12, padding: 14, marginTop: 10 },
   cardTitle: { fontSize: 18, fontWeight: '900', color: GREEN },

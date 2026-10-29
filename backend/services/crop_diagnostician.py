@@ -28,7 +28,7 @@ from backend.services.meta_models import (
 VISION_DIAGNOSIS_QUESTION = (
     "OUTPUT ONLY the JSON object below — no reasoning, no preamble, no markdown. "
     "First look at the photo, then emit exactly: "
-    '{"crop_name": "<cassava|maize|tomato|other>", '
+    '{"crop_name": "<cassava|maize|tomato|yam|cowpea|sorghum|rice|pepper|okra|groundnut|sweet_potato|other>", '
     '"disease_detected": "<disease with scientific name>", "confidence": 0.0-1.0, '
     '"damage_percentage": 0-100, "severity": "low|moderate|severe", '
     '"symptoms": ["...", "..."]}'
@@ -108,17 +108,27 @@ class DiagnosisResult(BaseModel):
 
 SYSTEM_PROMPT = (
     "You are a Senior Agronomist with 20+ years of field experience in West African smallholder farming "
-    "(Nigeria, Ghana, Côte d'Ivoire, Cameroon). You specialize in cassava, maize, tomato, yam, cowpea, and sorghum.\n\n"
+    "(Nigeria, Ghana, Côte d'Ivoire, Cameroon). You specialize in cassava, maize, tomato, yam, cowpea, "
+    "sorghum, rice, pepper, okra, groundnut, and sweet potato.\n\n"
     "TASKS:\n"
     "1. FIRST identify the crop species from LEAF ARCHITECTURE (shape), which is decisive:\n"
     "   - MAIZE = long strap-like parallel-veined blade, prominent midrib, NO lobes.\n"
     "   - CASSAVA = palmate leaf with 3-7 radiating finger-like lobes from one petiole point.\n"
     "   - TOMATO = small oval/compound leaflets with serrated edges.\n"
+    "   - YAM = huge single hastate/arrowhead leaf, smooth blade.\n"
+    "   - COWPEA = trifoliate: exactly 3 round leaflets on one stalk.\n"
+    "   - SORGHUM = broad draping blade with waxy pale midrib.\n"
+    "   - RICE = narrow short ribbon blade, small leaf in frame.\n"
+    "   - PEPPER = small glossy ovals, pendant habit.\n"
+    "   - OKRA = coarse palmate 5-lobed leaf, matte/hairy texture.\n"
+    "   - GROUNDNUT = tetrafoliate: exactly 4 small oval leaflets.\n"
+    "   - SWEET POTATO = heart/ivy-shaped lobed leaf.\n"
     "   NEVER call a long strap-like parallel-veined blade 'cassava'. "
     "Never call a palmate lobed leaf 'maize'.\n"
     "2. Detect whether the leaf is Healthy or infected with a specific local pathology "
     "(e.g., Cassava Mosaic Disease, Cassava Brown Streak, Fall Armyworm, Maize Streak Virus, "
-    "Northern Leaf Blight, Tomato Early/Late Blight, Tomato Yellow Leaf Curl, Yam Anthracnose, Cowpea Aphids).\n"
+    "Northern Leaf Blight, Tomato Early/Late Blight, Tomato Yellow Leaf Curl, Yam Anthracnose, Cowpea Aphids, "
+    "Rice Blast, Pepper Bacterial Spot, Okra Yellow Vein Mosaic, Groundnut Rosette, Sweet Potato Virus Disease).\n"
     "3. Estimate realistic damage_percentage (0 to 100).\n"
     "4. Assign severity: low (0-20), moderate (21-50), severe (51-100).\n"
     "5. List 2 to 4 distinct observable symptoms.\n"
@@ -172,6 +182,118 @@ REMEDY_DATABASE = {
         {
             "title": "Base Pruning & Dry Mulching",
             "preparation": "Remove all tomato leaves within 20cm of the soil surface using clean sanitized shears. Spread dry grass or rice straw mulch 5cm thick around the stem base to prevent soil-borne fungal spores from splashing onto foliage during rains.",
+        },
+    ],
+    "yam": [
+        {
+            "title": "Neem Seed Kernel Extract",
+            "preparation": "Grind 500g dry neem seeds to powder. Soak in 5L water for 12 hours, sieve, add half teaspoon black soap. Spray yam foliage at sunset every 7 days to suppress anthracnose spores and leaf beetles.",
+        },
+        {
+            "title": "Wood Ash & Compost Tea Drench",
+            "preparation": "Steep 2kg mature compost plus 500g wood ash in 10L water for 3 days, stirring daily. Strain and drench the base of each yam mound with 1L. Boosts beneficial microbes that outcompete anthracnose fungi.",
+        },
+        {
+            "title": "Rogue Spotted Leaves & Stake Vines",
+            "preparation": "Pick off all leaves with dark sunken spots and bury them far from the farm. Stake yam vines on trellises so foliage dries fast after rain — anthracnose needs wet leaves to spread.",
+        },
+    ],
+    "cowpea": [
+        {
+            "title": "Soap Water Aphid Wash",
+            "preparation": "Dissolve 3 tablespoons mild bar soap in 5L clean water. Spray directly onto aphid clusters under young cowpea leaflets early morning. Rinse with clean water after 2 hours. Repeat every 4 days until clusters clear.",
+        },
+        {
+            "title": "Neem Leaf Extract Spray",
+            "preparation": "Pound 1kg fresh neem leaves, soak in 5L water overnight, sieve, add 1 teaspoon black soap. Spray whole cowpea plants at sunset every 5 days — repels aphids and the whiteflies that spread yellow mosaic virus.",
+        },
+        {
+            "title": "Intercrop with Maize & Rogue Virused Plants",
+            "preparation": "Plant cowpea between maize rows to confuse aphid landing. Uproot any plant showing bright yellow mosaic all over and bury it far away — virus cannot be cured, only contained.",
+        },
+    ],
+    "sorghum": [
+        {
+            "title": "Hot Water Seed Treatment",
+            "preparation": "Soak sorghum seeds in water at 50°C (hot but not boiling — test with elbow) for 30 minutes before planting. Dry in shade. Kills smut spores carried on seed coats without chemicals.",
+        },
+        {
+            "title": "Neem & Garlic Panicle Spray",
+            "preparation": "Crush 1 bulb garlic plus 500g neem leaves, boil in 3L water 20 minutes, cool, strain, top to 5L. Spray sorghum heads and flag leaves at flowering to suppress anthracnose and grain mould.",
+        },
+        {
+            "title": "Remove Smutted Heads & Rotate",
+            "preparation": "Cut off any sorghum head that looks like a black powdery sac and burn it immediately — each sac holds millions of smut spores. Rotate sorghum with cowpea next season.",
+        },
+    ],
+    "rice": [
+        {
+            "title": "Neem Seed Kernel Blast Spray",
+            "preparation": "Grind 500g dry neem seeds, soak in 5L water 12 hours, sieve. Spray rice foliage at tillering and booting stages every 7 days to suppress blast spore germination.",
+        },
+        {
+            "title": "Wood Ash Top-Dressing",
+            "preparation": "Broadcast 2 handfuls of dry sieved wood ash per square metre of paddy at tillering. The silica and potash harden leaf tissue against blast penetration.",
+        },
+        {
+            "title": "Drain & Dry the Paddy Briefly",
+            "preparation": "Drain standing water for 2 days at early tillering so the soil surface cracks lightly, then re-flood. This dry shock breaks the blast and bacterial blight infection cycle.",
+        },
+    ],
+    "pepper": [
+        {
+            "title": "Baking Soda Copper-Alternative Spray",
+            "preparation": "Dissolve 2 tablespoons baking soda plus 1 teaspoon black soap in 5L water. Spray pepper foliage every 5 days at sunset to check bacterial spot spread without copper chemicals.",
+        },
+        {
+            "title": "Moringa Leaf Extract Boost",
+            "preparation": "Pound 1kg fresh moringa leaves, soak in 3L water 6 hours, sieve. Spray young pepper plants weekly — natural growth hormones help them outgrow mosaic virus symptoms.",
+        },
+        {
+            "title": "Mulch & Space for Airflow",
+            "preparation": "Mulch pepper beds with dry grass 5cm thick and space plants 45cm apart. Dry leaves and moving air stop bacterial spot splash almost completely.",
+        },
+    ],
+    "okra": [
+        {
+            "title": "Neem Whitefly Barrier Spray",
+            "preparation": "Pound 1kg neem leaves, soak in 5L water overnight, sieve, add 1 teaspoon black soap. Spray okra tops and undersides every 4 days — whiteflies spread yellow vein mosaic, neem blocks them.",
+        },
+        {
+            "title": "Reflective Ash & Sand Mulch",
+            "preparation": "Spread light-colored dry sand mixed with sieved wood ash around okra stems. The glare confuses incoming whiteflies and the ash sweetens the soil.",
+        },
+        {
+            "title": "Rogue Yellow Plants Early",
+            "preparation": "Pull out any okra seedling whose new leaves come out fully yellow and bury it far away. One virused plant feeds whiteflies that infect the whole row.",
+        },
+    ],
+    "groundnut": [
+        {
+            "title": "Neem Aphid & Thrips Spray",
+            "preparation": "Pound 1kg neem leaves, soak in 5L water overnight, sieve, add half teaspoon black soap. Spray groundnut foliage at flowering every 5 days — controls the aphids that carry rosette virus.",
+        },
+        {
+            "title": "Early Planting & Dense Stand",
+            "preparation": "Plant groundnut with the first good rains at close spacing (30cm rows). Dense early canopy shades out weeds and aphids settle less on vigorous young stands.",
+        },
+        {
+            "title": "Bury Defoliated Debris",
+            "preparation": "After harvest, gather all spotted fallen groundnut leaves and bury them deep. Leaf-spot fungi survive the dry season in surface trash.",
+        },
+    ],
+    "sweet_potato": [
+        {
+            "title": "Neem Vine Dip & Spray",
+            "preparation": "Dip sweet potato vine cuttings in neem leaf extract (1kg leaves in 5L water) for 10 minutes before planting. Spray growing vines every 7 days to deter whiteflies spreading SPVD.",
+        },
+        {
+            "title": "Select Clean Vines Only",
+            "preparation": "Take planting vines only from the greenest, undistorted mother plants. Never use strappy narrow leaves — they carry virus into the new field.",
+        },
+        {
+            "title": "Rotate with Maize & Fallow",
+            "preparation": "Rotate sweet potato with maize or leave the plot fallow one season. Rest breaks the weevil and virus cycle better than any spray.",
         },
     ],
 }
@@ -257,9 +379,10 @@ def _diagnosis_from_verdict_text(verdict: str, edge_probe) -> "DiagnosisResult":
     """
     low = (verdict or "").lower()
     crop = edge_probe.crop_name
-    for cand in ("maize", "cassava", "tomato", "yam", "cowpea", "sorghum"):
+    for cand in ("maize", "cassava", "tomato", "yam", "cowpea", "sorghum",
+                 "rice", "pepper", "okra", "groundnut", "sweet_potato", "sweet potato"):
         if re.search(rf"\b{cand}\b", low):
-            crop = cand
+            crop = "sweet_potato" if cand == "sweet potato" else cand
             break
     disease = edge_probe.disease_detected
     patterns = [
@@ -270,8 +393,25 @@ def _diagnosis_from_verdict_text(verdict: str, edge_probe) -> "DiagnosisResult":
         (r"maize\s*streak", "Maize Streak Virus"),
         (r"fall\s*armyworm", "Fall Armyworm (Spodoptera frugiperda)"),
         (r"cassava\s*mosaic", "Cassava Mosaic Disease (CMD)"),
+        (r"cassava\s*(bacterial\s*)?blight", "Cassava Bacterial Blight"),
         (r"early\s*blight", "Early Blight (Alternaria solani)"),
         (r"yellow\s*leaf\s*curl", "Tomato Yellow Leaf Curl"),
+        (r"yam\s*anthracnose", "Yam Anthracnose (Colletotrichum gloeosporioides)"),
+        (r"yam\s*mosaic", "Yam Mosaic Virus"),
+        (r"cowpea.*aphid|aphid.*cowpea", "Cowpea Aphid Infestation (Aphis craccivora)"),
+        (r"cowpea.*mosaic|yellow\s*mosaic.*cowpea", "Cowpea Yellow Mosaic Virus"),
+        (r"sorghum\s*anthracnose", "Sorghum Anthracnose (Colletotrichum sublineolum)"),
+        (r"sorghum.*blight|covered\s*kernel\s*smut", "Sorghum Leaf Blight (Exserohilum turcicum)"),
+        (r"rice\s*blast", "Rice Blast (Magnaporthe oryzae)"),
+        (r"rice.*bacterial.*blight|bacterial\s*leaf\s*blight.*rice", "Rice Bacterial Leaf Blight (Xanthomonas oryzae)"),
+        (r"pepper.*bacterial.*spot|bacterial\s*leaf\s*spot.*pepper", "Pepper Bacterial Leaf Spot (Xanthomonas)"),
+        (r"pepper\s*mosaic", "Pepper Mosaic Virus"),
+        (r"okra.*yellow\s*vein|yellow\s*vein.*okra", "Okra Yellow Vein Mosaic Virus"),
+        (r"okra.*mildew|powdery\s*mildew.*okra", "Okra Powdery Mildew"),
+        (r"groundnut\s*rosette", "Groundnut Rosette Virus"),
+        (r"groundnut.*leaf\s*spot|early\s*leaf\s*spot.*groundnut", "Groundnut Early Leaf Spot (Cercospora arachidicola)"),
+        (r"sweet\s*potato\s*virus|SPVD", "Sweet Potato Virus Disease (SPVD)"),
+        (r"sweet\s*potato.*alternaria|alternaria.*sweet", "Sweet Potato Alternaria Leaf Spot"),
     ]
     for pat, name in patterns:
         if re.search(pat, low):

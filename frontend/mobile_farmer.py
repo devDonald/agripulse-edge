@@ -74,25 +74,31 @@ photo = st.file_uploader("Take photo or upload", type=["jpg", "jpeg", "png", "we
 
 st.markdown("##### ⚡ Quick Test Presets")
 _FBASE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sample_data")
-preset_cols = st.columns(3)
-with preset_cols[0]:
-    if st.button("🍃 Cassava", use_container_width=True):
-        with open(os.path.join(_FBASE, "cassava_mosaic.jpg"), "rb") as f:
-            st.session_state.f_raw = f.read()
-            st.session_state.f_name = "cassava_mosaic.jpg"
-            st.rerun()
-with preset_cols[1]:
-    if st.button("🌽 Maize", use_container_width=True):
-        with open(os.path.join(_FBASE, "maize_fall_armyworm.jpg"), "rb") as f:
-            st.session_state.f_raw = f.read()
-            st.session_state.f_name = "maize_fall_armyworm.jpg"
-            st.rerun()
-with preset_cols[2]:
-    if st.button("🍅 Tomato", use_container_width=True):
-        with open(os.path.join(_FBASE, "tomato_early_blight.jpg"), "rb") as f:
-            st.session_state.f_raw = f.read()
-            st.session_state.f_name = "tomato_early_blight.jpg"
-            st.rerun()
+_PRESETS = [
+    ("🍃 Cassava", "cassava_mosaic.jpg"),
+    ("🌽 Maize", "maize_fall_armyworm.jpg"),
+    ("🌽 Maize Rust", "user_maize_rust.jpg"),
+    ("🍅 Tomato", "tomato_early_blight.jpg"),
+    ("🍠 Yam", "yam_anthracnose.jpg"),
+    ("🫛 Cowpea", "cowpea_aphids.jpg"),
+    ("🌾 Sorghum", "sorghum_anthracnose.jpg"),
+    ("🍚 Rice", "rice_blast.jpg"),
+    ("🌶️ Pepper", "pepper_spot.jpg"),
+    ("🥬 Okra", "okra_mosaic.jpg"),
+    ("🥜 Groundnut", "groundnut_rosette.jpg"),
+    ("🍠 Sweet Potato", "sweetpotato_virus.jpg"),
+]
+for _row in range(0, len(_PRESETS), 3):
+    _cols = st.columns(3)
+    for _i, (label, fname) in enumerate(_PRESETS[_row:_row + 3]):
+        with _cols[_i]:
+            if st.button(label, use_container_width=True, key=f"pwa_{fname}"):
+                _p = os.path.join(_FBASE, fname)
+                if os.path.exists(_p):
+                    with open(_p, "rb") as f:
+                        st.session_state.f_raw = f.read()
+                        st.session_state.f_name = fname
+                    st.rerun()
 
 # Single shared Diagnose step: uploader and presets both land in f_raw/f_name.
 if photo:

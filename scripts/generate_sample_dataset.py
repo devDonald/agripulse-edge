@@ -74,6 +74,108 @@ def create_sample_dataset(output_dir: str = "sample_data"):
     img_nonleaf = Image.new("RGB", (w, h), (145, 142, 140))
     img_nonleaf.save(os.path.join(output_dir, "non_leaf_sample.jpg"), quality=90)
 
+    # 6. Yam Anthracnose (huge hastate leaf, dark sunken spots)
+    img_yam = Image.new("RGB", (w, h), (25, 25, 25))
+    draw_y = ImageDraw.Draw(img_yam)
+    draw_y.polygon([(320, 30), (470, 250), (430, 460), (210, 460), (170, 250)], fill=(48, 150, 48))
+    draw_y.line([(320, 40), (320, 450)], fill=(85, 190, 85), width=7)
+    for sx, sy, sr in [(280, 200, 30), (360, 300, 36), (310, 370, 26), (340, 150, 24)]:
+        draw_y.ellipse([sx - sr - 8, sy - sr - 8, sx + sr + 8, sy + sr + 8], fill=(235, 210, 40))
+        draw_y.ellipse([sx - sr, sy - sr, sx + sr, sy + sr], fill=(28, 14, 8))
+    Image.fromarray(np.array(img_yam)).save(
+        os.path.join(output_dir, "yam_anthracnose.jpg"), quality=95)
+
+    # 7. Cowpea Aphids (trifoliate: 3 round leaflets, curled + mottled)
+    img_cow = Image.new("RGB", (w, h), (25, 25, 25))
+    draw_c = ImageDraw.Draw(img_cow)
+    for cx, cy in [(250, 200), (390, 200), (320, 330)]:
+        draw_c.ellipse([cx - 75, cy - 70, cx + 75, cy + 70], fill=(52, 158, 48))
+    draw_c.line([(320, 400), (320, 260)], fill=(80, 190, 80), width=5)
+    arr_c = np.array(img_cow).astype(np.float32)
+    yg, xg = np.ogrid[:h, :w]
+    mot = (np.sin(xg / 18.0) * np.cos(yg / 18.0) > 0.3) & (arr_c[:, :, 1] > 80)
+    arr_c[mot, 0] = 230
+    arr_c[mot, 1] = 215
+    arr_c[mot, 2] = 40
+    Image.fromarray(np.clip(arr_c, 0, 255).astype(np.uint8)).save(
+        os.path.join(output_dir, "cowpea_aphids.jpg"), quality=95)
+
+    # 8. Sorghum Anthracnose (broad draping blade, red-purple spots)
+    img_sor = Image.new("RGB", (w, h), (25, 25, 25))
+    draw_s = ImageDraw.Draw(img_sor)
+    draw_s.polygon([(120, 470), (220, 470), (520, 60), (430, 30)], fill=(55, 155, 50))
+    draw_s.line([(170, 470), (475, 45)], fill=(200, 210, 180), width=9)
+    for sx, sy, sr in [(300, 300, 14), (380, 220, 18), (440, 140, 12)]:
+        draw_s.ellipse([sx - sr, sy - sr, sx + sr, sy + sr], fill=(140, 40, 60))
+        draw_s.ellipse([sx - sr // 2, sy - sr // 2, sx + sr // 2, sy + sr // 2], fill=(200, 170, 90))
+    Image.fromarray(np.array(img_sor)).save(
+        os.path.join(output_dir, "sorghum_anthracnose.jpg"), quality=95)
+
+    # 9. Rice Blast (narrow ribbon blade, diamond lesions)
+    img_rice = Image.new("RGB", (w, h), (25, 25, 25))
+    draw_r = ImageDraw.Draw(img_rice)
+    draw_r.polygon([(270, 470), (310, 470), (380, 40), (340, 30)], fill=(60, 165, 55))
+    draw_r.line([(290, 470), (360, 35)], fill=(120, 200, 110), width=3)
+    for sx, sy in [(320, 350), (335, 250), (350, 150), (328, 300), (342, 200)]:
+        draw_r.polygon([(sx - 14, sy), (sx, sy - 30), (sx + 14, sy), (sx, sy + 30)], fill=(150, 150, 150))
+        draw_r.polygon([(sx - 14, sy), (sx, sy - 30), (sx + 14, sy), (sx, sy + 30)], outline=(110, 60, 30), width=4)
+    Image.fromarray(np.array(img_rice)).save(
+        os.path.join(output_dir, "rice_blast.jpg"), quality=95)
+
+    # 10. Pepper Bacterial Spot (small glossy ovals, dark spots + halos)
+    img_pep = Image.new("RGB", (w, h), (25, 25, 25))
+    draw_p = ImageDraw.Draw(img_pep)
+    for cx, cy in [(260, 220), (380, 260), (320, 350)]:
+        draw_p.ellipse([cx - 55, cy - 45, cx + 55, cy + 45], fill=(40, 145, 45))
+    for sx, sy, sr in [(250, 215, 10), (390, 265, 12), (315, 345, 9)]:
+        draw_p.ellipse([sx - sr - 6, sy - sr - 6, sx + sr + 6, sy + sr + 6], fill=(235, 215, 40))
+        draw_p.ellipse([sx - sr, sy - sr, sx + sr, sy + sr], fill=(60, 40, 20))
+    Image.fromarray(np.array(img_pep)).save(
+        os.path.join(output_dir, "pepper_spot.jpg"), quality=95)
+
+    # 11. Okra Yellow Vein Mosaic (coarse 5-lobed leaf, yellow vein netting)
+    img_okra = Image.new("RGB", (w, h), (30, 28, 26))
+    draw_o = ImageDraw.Draw(img_okra)
+    center = (w // 2, h // 2 + 60)
+    for angle in [-70, -35, 0, 35, 70]:
+        rad = np.radians(angle)
+        ex = int(center[0] + 175 * np.sin(rad))
+        ey = int(center[1] - 175 * np.cos(rad))
+        draw_o.line([center, (ex, ey)], fill=(58, 150, 48), width=60)
+    arr_o = np.array(img_okra).astype(np.float32)
+    vein = ((np.abs(np.sin(xg / 9.0)) < 0.25) | (np.abs(np.cos(yg / 9.0)) < 0.25)) & (arr_o[:, :, 1] > 80)
+    arr_o[vein, 0] = 240
+    arr_o[vein, 1] = 225
+    arr_o[vein, 2] = 30
+    Image.fromarray(np.clip(arr_o, 0, 255).astype(np.uint8)).save(
+        os.path.join(output_dir, "okra_mosaic.jpg"), quality=95)
+
+    # 12. Groundnut Rosette (4 small oval leaflets, stunted + mottled)
+    img_gnut = Image.new("RGB", (w, h), (25, 25, 25))
+    draw_g = ImageDraw.Draw(img_gnut)
+    for cx, cy in [(270, 210), (370, 210), (270, 320), (370, 320)]:
+        draw_g.ellipse([cx - 48, cy - 38, cx + 48, cy + 38], fill=(55, 155, 50))
+    arr_g = np.array(img_gnut).astype(np.float32)
+    motg = (np.sin(xg / 16.0) * np.cos(yg / 16.0) > 0.2) & (arr_g[:, :, 1] > 80)
+    arr_g[motg, 0] = 225
+    arr_g[motg, 1] = 210
+    arr_g[motg, 2] = 45
+    Image.fromarray(np.clip(arr_g, 0, 255).astype(np.uint8)).save(
+        os.path.join(output_dir, "groundnut_rosette.jpg"), quality=95)
+
+    # 13. Sweet Potato Virus (heart-shaped lobed leaf, feathery yellow mosaic)
+    img_sp = Image.new("RGB", (w, h), (25, 25, 25))
+    draw_sp = ImageDraw.Draw(img_sp)
+    draw_sp.polygon([(320, 120), (440, 220), (400, 380), (240, 380), (200, 220)], fill=(52, 155, 50))
+    draw_sp.line([(320, 130), (320, 370)], fill=(90, 195, 90), width=5)
+    arr_sp = np.array(img_sp).astype(np.float32)
+    feather = (np.abs(np.sin((xg + yg) / 12.0)) < 0.3) & (arr_sp[:, :, 1] > 80)
+    arr_sp[feather, 0] = 235
+    arr_sp[feather, 1] = 220
+    arr_sp[feather, 2] = 35
+    Image.fromarray(np.clip(arr_sp, 0, 255).astype(np.uint8)).save(
+        os.path.join(output_dir, "sweetpotato_virus.jpg"), quality=95)
+
 
 if __name__ == "__main__":
     create_sample_dataset()

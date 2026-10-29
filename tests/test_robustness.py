@@ -56,6 +56,51 @@ def test_diagnose_user_maize_rust():
     assert len(data["organic_remedies"]) == 3
 
 
+NEW_CROPS = [
+    ("yam_anthracnose.jpg", "yam", None),
+    ("cowpea_aphids.jpg", "cowpea", None),
+    ("sorghum_anthracnose.jpg", "sorghum", None),
+    ("rice_blast.jpg", "rice", "blast"),
+    ("pepper_spot.jpg", "pepper", None),
+    ("okra_mosaic.jpg", "okra", "mosaic"),
+    ("groundnut_rosette.jpg", "groundnut", "rosette"),
+    ("sweetpotato_virus.jpg", "sweet_potato", "virus"),
+]
+
+
+def test_diagnose_new_crops():
+    """All 8 new crops: correct crop, 3 remedies, valid severity."""
+    for fname, crop, marker in NEW_CROPS:
+        path = os.path.join(SAMPLE_DIR, fname)
+        with open(path, "rb") as f:
+            res = client.post("/api/v1/diagnose", files={"file": ("leaf.jpg", f, "image/jpeg")})
+        assert res.status_code == 200, fname
+        data = res.json()
+        assert data["crop_name"].lower() == crop, f"{fname}: got {data['crop_name']}"
+        if marker:
+            assert marker in data["disease_detected"].lower(), f"{fname}: {data['disease_detected']}"
+        assert len(data["organic_remedies"]) == 3, fname
+        assert data["severity"] in ("low", "moderate", "severe"), fname
+
+
+def test_expected_crop_hint_agrees():
+    """Mobile crop-picker hint: agreement flag when hint matches, note when not."""
+    path = os.path.join(SAMPLE_DIR, "maize_fall_armyworm.jpg")
+    with open(path, "rb") as f:
+        res = client.post("/api/v1/diagnose-edge?expected_crop=maize",
+                          files={"file": ("leaf.jpg", f, "image/jpeg")})
+    assert res.status_code == 200
+    assert res.json().get("hint_agree") is True
+    with open(path, "rb") as f:
+        res = client.post("/api/v1/diagnose-edge?expected_crop=cassava",
+                          files={"file": ("leaf.jpg", f, "image/jpeg")})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["crop_name"].lower() == "maize"
+    assert body.get("hint_agree") is False
+    assert "hint_note" in body
+
+
 def test_diagnose_tomato_early_blight():
     path = os.path.join(SAMPLE_DIR, "tomato_early_blight.jpg")
     with open(path, "rb") as f:

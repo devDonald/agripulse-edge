@@ -29,10 +29,12 @@ async function request(url, options = {}, timeoutMs = 45000) {
   } finally { clearTimeout(timer); }
 }
 
-export async function diagnoseLeaf(photoUri, language = 'pidgin') {
+export async function diagnoseLeaf(photoUri, language = 'pidgin', expectedCrop = null) {
   const form = new FormData();
   form.append('file', { uri: photoUri, name: 'leaf.jpg', type: 'image/jpeg' });
-  const res = await request(`${getBackendUrl()}/api/v1/diagnose-edge`, { method: 'POST', body: form });
+  let url = `${getBackendUrl()}/api/v1/diagnose-edge`;
+  if (expectedCrop) url += `?expected_crop=${encodeURIComponent(expectedCrop)}`;
+  const res = await request(url, { method: 'POST', body: form });
   if (!res.ok) throw new Error(`diagnose failed (${res.status})`);
   return res.json();
 }

@@ -360,13 +360,22 @@ with tab_clinic:
         sample_map = {
             "cassava": ("🍃 Cassava Mosaic", "cassava_mosaic.jpg"),
             "maize": ("🌽 Maize Armyworm", "maize_fall_armyworm.jpg"),
+            "maize_rust": ("🌽 Maize Rust", "user_maize_rust.jpg"),
             "tomato": ("🍅 Tomato Blight", "tomato_early_blight.jpg"),
+            "yam": ("🍠 Yam Anthracnose", "yam_anthracnose.jpg"),
+            "cowpea": ("🫛 Cowpea Aphids", "cowpea_aphids.jpg"),
+            "sorghum": ("🌾 Sorghum Blight", "sorghum_anthracnose.jpg"),
+            "rice": ("🍚 Rice Blast", "rice_blast.jpg"),
+            "pepper": ("🌶️ Pepper Spot", "pepper_spot.jpg"),
+            "okra": ("🥬 Okra Mosaic", "okra_mosaic.jpg"),
+            "groundnut": ("🥜 Groundnut Rosette", "groundnut_rosette.jpg"),
+            "sweetpotato": ("🍠 Sweet Potato Virus", "sweetpotato_virus.jpg"),
             "healthy": ("🌿 Healthy Leaf", "healthy_leaf.jpg"),
         }
         preset_cols = st.columns(4)
         for idx, (k, (label, fname)) in enumerate(sample_map.items()):
             p = os.path.join(SAMPLE_DIR, fname)
-            with preset_cols[idx]:
+            with preset_cols[idx % 4]:
                 if os.path.exists(p):
                     st.image(p, use_container_width=True)
                 else:
