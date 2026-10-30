@@ -114,22 +114,54 @@ async def send_whatsapp_voice(recipient_phone: str, audio_bytes: bytes) -> bool:
         return False
 
 
+WHATSAPP_MEDIA_HOSTS = ("lookaside.fbsbx.com", "scontent.xx.fbcdn.net", ".fbcdn.net", "fbcdn.net")
+
+
 async def download_whatsapp_media(media_id: str) -> bytes:
-    """Downloads photo bytes via Graph API: media ID -> media URL -> bytes."""
+    """Downloads photo bytes via Graph API: media ID -> media URL -> bytes.
+
+    The returned media URL must land on Meta CDN hosts (SSRF guard), and the
+    download is streamed with a 10MB cap plus image validation — a forged
+    webhook must not turn this server into a proxy or memory bomb.
+    """
+    import io as _io
+
+    from PIL import Image as _Image
+
     if not WHATSAPP_TOKEN:
         raise RuntimeError("WHATSAPP_TOKEN not configured — cannot fetch media")
+    if not media_id or not media_id.replace("-", "").replace("_", "").isalnum():
+        raise RuntimeError("Invalid WhatsApp media ID")
     headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}"}
     async with httpx.AsyncClient(timeout=20.0) as client:
         meta = await client.get(f"https://graph.facebook.com/v21.0/{media_id}", headers=headers)
         if meta.status_code != 200:
             raise RuntimeError(f"Graph media lookup failed {meta.status_code}: {meta.text[:200]}")
-        media_url = meta.json().get("url", "")
-        if not media_url:
-            raise RuntimeError("Graph returned no media URL")
-        data = await client.get(media_url, headers=headers)
-        if data.status_code != 200:
-            raise RuntimeError(f"Graph media download failed {data.status_code}")
-        return data.content
+        media_url = meta.json().get("url", "") or ""
+        from urllib.parse import urlparse as _urlparse
+
+        host = (_urlparse(media_url).netloc or "").lower()
+        if _urlparse(media_url).scheme != "https" or not any(
+            host == h or host.endswith(h) for h in WHATSAPP_MEDIA_HOSTS
+        ):
+            raise RuntimeError("WhatsApp media host not allowlisted")
+        total = 0
+        chunks = []
+        async with client.stream("GET", media_url, headers=headers) as data:
+            if data.status_code != 200:
+                raise RuntimeError(f"Graph media download failed {data.status_code}")
+            async for chunk in data.aiter_bytes(65536):
+                total += len(chunk)
+                if total > 10 * 1024 * 1024:
+                    raise RuntimeError("WhatsApp media exceeds size cap")
+                chunks.append(chunk)
+        raw = b"".join(chunks)
+    try:
+        with _Image.open(_io.BytesIO(raw)) as probe:
+            probe.verify()
+    except Exception:
+        raise RuntimeError("WhatsApp media is not a decodable image")
+    return raw
 
 
 async def _image_diagnosis_reply(image_bytes: bytes, caption: str = "") -> Dict[str, Any]:

@@ -116,6 +116,41 @@ def test_dial_webhook_signature_enforced(monkeypatch):
             os.environ.pop("DIAL_WEBHOOK_SECRET", None)
 
 
+def test_farmer_key_policy_open_by_default():
+    res = client.get("/api/v1/mobile/history", params={"farmer_id": "open-dev-farmer"})
+    assert res.status_code == 200
+
+
+def test_farmer_key_policy_locked(monkeypatch):
+    monkeypatch.setenv("FARMER_API_KEY", "coop-secret-123")
+    locked = client.get("/api/v1/mobile/history", params={"farmer_id": "mama-nkechi"})
+    assert locked.status_code == 401
+    authed = client.get("/api/v1/mobile/history",
+                        params={"farmer_id": "mama-nkechi", "farmer_key": "coop-secret-123"})
+    assert authed.status_code == 200
+    coop = client.get("/api/v1/mobile/history", params={"farmer_id": "coop:kaduna-north"})
+    assert coop.status_code == 200
+
+
+def test_whatsapp_media_id_rejected_without_token():
+    import asyncio
+
+    from backend.services import whatsapp_service
+    try:
+        asyncio.run(whatsapp_service.download_whatsapp_media("../../../etc/passwd"))
+        raise AssertionError("path traversal media id accepted")
+    except RuntimeError as e:
+        assert "configured" in str(e) or "Invalid" in str(e)
+
+
+def test_mobile_scan_field_caps():
+    res = client.post("/api/v1/mobile/sync",
+                      json={"farmer_id": "x", "crop_name": "c" * 41})
+    assert res.status_code == 422
+    bad = client.get("/api/v1/mobile/history", params={"farmer_id": "x", "limit": 500})
+    assert bad.status_code == 422
+
+
 def test_rate_limit_headers_present():
     res = client.get("/health")
     assert res.status_code == 200

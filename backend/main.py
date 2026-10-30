@@ -203,16 +203,47 @@ class SynthesisRequest(BaseModel):
 
 
 class MobileScan(BaseModel):
-    client_scan_id: Optional[str] = None
-    farmer_id: Optional[str] = None
-    crop_name: str = "unknown"
-    disease_detected: str = "unknown"
-    damage_percentage: float = 0.0
-    severity: str = "low"
-    language: str = "pidgin"
-    latitude: Optional[float] = None
-    longitude: Optional[float] = None
-    timestamp: Optional[str] = None
+    client_scan_id: Optional[str] = Field(default=None, max_length=80)
+    farmer_id: Optional[str] = Field(default=None, max_length=120)
+    crop_name: str = Field(default="unknown", max_length=40)
+    disease_detected: str = Field(default="unknown", max_length=160)
+    damage_percentage: float = Field(default=0.0, ge=0.0, le=100.0)
+    severity: str = Field(default="low", max_length=20)
+    language: str = Field(default="pidgin", max_length=20)
+    latitude: Optional[float] = Field(default=None, ge=-90.0, le=90.0)
+    longitude: Optional[float] = Field(default=None, ge=-180.0, le=180.0)
+    timestamp: Optional[str] = Field(default=None, max_length=40)
+
+
+def _farmer_id_allowed(farmer_id: str) -> str:
+    """Normalizes a farmer id and enforces the opt-in access policy.
+
+    Policy: ids starting with 'coop:' are cooperative-managed and always
+    allowed; any other id must present `?farmer_key=` matching FARMER_API_KEY
+    when the server sets one (fail-closed for unknown ids in locked mode,
+    open for local/dev when unset).
+    """
+    fid = (farmer_id or "anonymous").strip()[:120] or "anonymous"
+    return fid
+
+
+def _require_farmer_key(farmer_id: str, farmer_key: Optional[str]) -> None:
+    """Enforces opt-in per-farmer auth without breaking open dev/local use.
+
+    - `coop:*` ids: cooperative-managed, always allowed.
+    - FARMER_API_KEY unset: open mode (dev, pilot, offline PWA).
+    - FARMER_API_KEY set: every other id must present the matching key.
+    """
+    fid = (farmer_id or "anonymous").strip()
+    if fid.startswith("coop:"):
+        return
+    expected = os.getenv("FARMER_API_KEY", "").strip()
+    if not expected:
+        return
+    import hmac as _hm
+
+    if not farmer_key or not _hm.compare_digest(str(farmer_key), expected):
+        raise HTTPException(status_code=401, detail="Invalid farmer key")
 
 
 class MobileSyncBatch(BaseModel):
@@ -328,7 +359,7 @@ async def diagnose_edge(
     request: Request,
     file: UploadFile = File(..., description="Crop leaf photo for offline edge diagnosis"),
     expected_crop: Optional[str] = Query(
-        default=None,
+        default=None, max_length=40,
         description="Farmer-selected crop hint (weak prior only — leaf shape stays authoritative)",
     ),
 ):
@@ -406,24 +437,35 @@ def get_edge_benchmarks():
 
 
 @app.post("/api/v1/mobile/sync")
-async def mobile_sync_one(scan: MobileScan, farmer_id: str = Query(default="anonymous")):
+@limiter.limit("60/minute")
+async def mobile_sync_one(request: Request, scan: MobileScan,
+                          farmer_id: str = Query(default="anonymous", max_length=120),
+                          farmer_key: Optional[str] = Query(default=None, max_length=120)):
     """Accepts a single queued farm scan from an offline mobile client."""
-    fid = scan.farmer_id or farmer_id
+    _require_farmer_key(farmer_id if farmer_id != "anonymous" else (scan.farmer_id or "anonymous"),
+                        farmer_key)
+    fid = _farmer_id_allowed(scan.farmer_id or farmer_id)
     data = scan.model_dump()
     data.pop("farmer_id", None)
     return JSONResponse(content=save_scan(farmer_id=fid, **data))
 
 
 @app.post("/api/v1/mobile/sync-batch")
-async def mobile_sync_batch(batch: MobileSyncBatch):
+@limiter.limit("30/minute")
+async def mobile_sync_batch(request: Request, batch: MobileSyncBatch,
+                            farmer_key: Optional[str] = Query(default=None, max_length=120)):
     """Accepts a batch of queued farm scans when the phone regains connectivity."""
+    _require_farmer_key(batch.farmer_id, farmer_key)
     return JSONResponse(content=sync_batch(batch.farmer_id, batch.scans))
 
 
 @app.get("/api/v1/mobile/history")
-async def mobile_history(farmer_id: str = Query(default="anonymous"), limit: int = Query(default=20, ge=1, le=100)):
+async def mobile_history(farmer_id: str = Query(default="anonymous", max_length=120),
+                         limit: int = Query(default=20, ge=1, le=100),
+                         farmer_key: Optional[str] = Query(default=None, max_length=120)):
     """Returns a farmer's synced scan history for the cooperative dashboard."""
-    return JSONResponse(content=get_history(farmer_id, limit))
+    _require_farmer_key(farmer_id, farmer_key)
+    return JSONResponse(content=get_history(_farmer_id_allowed(farmer_id), limit))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
