@@ -153,7 +153,7 @@ def ready():
 
 
 class VoiceAdvisoryRequest(BaseModel):
-    query: str = Field(..., min_length=2)
+    query: str = Field(..., min_length=2, max_length=1000)
     language: str = Field(default="pidgin")
     diagnosis_context: Optional[dict] = None
     model_id: Optional[str] = Field(default=None, description="Meta model ID override")
@@ -161,7 +161,7 @@ class VoiceAdvisoryRequest(BaseModel):
 
 
 class SynthesisRequest(BaseModel):
-    text: str = Field(..., min_length=2)
+    text: str = Field(..., min_length=2, max_length=2000)
     language: str = Field(default="pidgin")
 
 
@@ -179,17 +179,33 @@ class MobileScan(BaseModel):
 
 
 class MobileSyncBatch(BaseModel):
-    farmer_id: str = Field(..., min_length=2)
-    scans: list = Field(default_factory=list)
+    farmer_id: str = Field(..., min_length=2, max_length=120)
+    scans: List[dict] = Field(default_factory=list, max_length=200)
 
 
 class DialCallRequest(BaseModel):
-    to: str = Field(..., min_length=7, description="Farmer phone in E.164, e.g. +2348012345678")
-    crop_name: str = "cassava"
-    disease_detected: str = "unknown"
-    damage_percentage: float = 0.0
-    steps: List[str] = Field(default_factory=list)
-    language: str = "pidgin"
+    to: str = Field(..., min_length=7, max_length=20, description="Farmer phone in E.164, e.g. +2348012345678")
+    crop_name: str = Field(default="cassava", max_length=40)
+    disease_detected: str = Field(default="unknown", max_length=120)
+    damage_percentage: float = Field(default=0.0, ge=0.0, le=100.0)
+    steps: List[str] = Field(default_factory=list, max_length=8)
+    language: str = Field(default="pidgin", max_length=20)
+
+
+def _sanitize_prompt_text(value: str, limit: int = 1000) -> str:
+    """Strips prompt-injection scaffolding from farmer-supplied text.
+
+    Captions and queries are interpolated into Meta system prompts; strip
+    role-play / instruction-override markers so a hostile caption cannot
+    steer the agronomist prompt. Truncates to `limit` chars.
+    """
+    import re as _re
+
+    text = (value or "")[:limit]
+    text = _re.sub(r"(?i)\b(system|assistant|developer)\s*:", " ", text)
+    text = _re.sub(r"(?i)ignore\s+(all\s+)?(previous|prior|above)\s+instructions?", " ", text)
+    text = _re.sub(r"```", " ", text)
+    return " ".join(text.split())
 
 
 def _check_image(file: UploadFile, raw: bytes):
@@ -286,7 +302,8 @@ async def diagnose_edge(
 
 
 @app.post("/api/v1/segment", response_model=SegmentationResult)
-async def segment(file: UploadFile = File(..., description="Crop leaf photo")):
+@limiter.limit("30/minute")
+async def segment(request: Request, file: UploadFile = File(..., description="Crop leaf photo")):
     """Segments leaf lesion boundaries and quantifies chlorosis vs. necrosis surface area."""
     raw = await file.read()
     _check_image(file, raw)
@@ -299,7 +316,8 @@ async def segment(file: UploadFile = File(..., description="Crop leaf photo")):
 
 
 @app.post("/api/v1/voice-advisory", response_model=AdvisoryResponse)
-async def voice_advisory(req: VoiceAdvisoryRequest):
+@limiter.limit("60/minute")
+async def voice_advisory(request: Request, req: VoiceAdvisoryRequest):
     """Multilingual voice/text advisory in Nigerian Pidgin, Hausa, Yoruba, or simple English."""
     try:
         result = await generate_advisory(req.query, req.language, req.diagnosis_context,
@@ -312,8 +330,11 @@ async def voice_advisory(req: VoiceAdvisoryRequest):
 
 
 @app.post("/api/v1/voice-synthesize")
-async def voice_synthesize(req: SynthesisRequest):
+@limiter.limit("20/minute")
+async def voice_synthesize(request: Request, req: SynthesisRequest):
     """Converts local dialect extension text into audible voice note audio stream."""
+    if len(req.text) > 2000:
+        raise HTTPException(400, "Text too long for synthesis (max 2000 chars).")
     audio_bytes = synthesize_spoken_audio(req.text, req.language)
     return Response(content=audio_bytes, media_type="audio/mpeg")
 
@@ -418,8 +439,11 @@ async def dial_status():
 
 
 @app.post("/api/v1/dial/webhook")
+@limiter.limit("60/minute")
 async def dial_webhook(request: Request):
     """Receives Dial message.received events (photo in media array -> voice note out)."""
+    if len(await request.body()) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Dial event too large")
     try:
         payload = await request.json()
     except Exception:
@@ -429,12 +453,20 @@ async def dial_webhook(request: Request):
 
 
 @app.post("/api/v1/dial/call")
-async def dial_call(req: DialCallRequest):
+@limiter.limit("10/minute")
+async def dial_call(request: Request, req: DialCallRequest):
     """Rings a farmer and reads the treatment slip aloud (offline-week fallback)."""
-    steps = req.steps or ["Prepare neem leaf spray as advised by the extension officer.",
-                          "Spray under the leaves at sunset.",
-                          "Remove badly infected leaves and bury them far from the farm."]
+    import re as _re
+
+    if not _re.fullmatch(r"\+\d{7,15}", req.to.strip()):
+        raise HTTPException(status_code=400, detail="to must be E.164 (e.g. +2348012345678)")
+    steps = [_sanitize_prompt_text(s, 300) for s in (req.steps or [])[:4]] or [
+        "Prepare neem leaf spray as advised by the extension officer.",
+        "Spray under the leaves at sunset.",
+        "Remove badly infected leaves and bury them far from the farm.",
+    ]
     result = await ring_farmer_with_treatment(
-        req.to, req.crop_name, req.disease_detected,
+        req.to.strip(), _sanitize_prompt_text(req.crop_name, 40),
+        _sanitize_prompt_text(req.disease_detected, 120),
         req.damage_percentage, steps, req.language)
     return JSONResponse(content=result)

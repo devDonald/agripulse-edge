@@ -11,21 +11,40 @@ Env: DIAL_API_KEY (sk_live_...), DIAL_NUMBER (your Dial line),
      DIAL_WEBHOOK_SECRET (optional HMAC check on inbound events).
 """
 import base64
+import io
 import logging
 import os
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
 import httpx
 from dotenv import load_dotenv
+from PIL import Image
 
 load_dotenv()
 logger = logging.getLogger("agripulse.dial")
 
-DIAL_API_BASE = os.getenv("DIAL_API_BASE", "https://api.getdial.ai").rstrip("/")
+_DEFAULT_DIAL_BASE = "https://api.getdial.ai"
+DIAL_API_BASE = os.getenv("DIAL_API_BASE", _DEFAULT_DIAL_BASE).rstrip("/")
+if DIAL_API_BASE != _DEFAULT_DIAL_BASE:
+    # Env-overrideable base URL is an SSRF-adjacent risk: only https, and log it loudly.
+    _parsed_base = urlparse(DIAL_API_BASE)
+    if _parsed_base.scheme != "https" or not _parsed_base.netloc:
+        raise RuntimeError("DIAL_API_BASE must be an https URL")
+    logger.warning(f"DIAL_API_BASE overridden to {DIAL_API_BASE}")
 DIAL_API_KEY = os.getenv("DIAL_API_KEY", "")
 DIAL_NUMBER = os.getenv("DIAL_NUMBER", "")
 DIAL_WEBHOOK_SECRET = os.getenv("DIAL_WEBHOOK_SECRET", "")
 DIAL_TIMEOUT = float(os.getenv("DIAL_TIMEOUT", "30"))
+DIAL_MAX_MEDIA_BYTES = int(os.getenv("DIAL_MAX_MEDIA_BYTES", str(10 * 1024 * 1024)))
+
+# Media may only be fetched from Dial's own CDN hosts — never arbitrary URLs
+# supplied inside a webhook payload (SSRF otherwise).
+DIAL_MEDIA_HOSTS = tuple(
+    h.strip().lower()
+    for h in os.getenv("DIAL_MEDIA_HOSTS", "cdn.getdial.ai,media.getdial.ai,api.getdial.ai").split(",")
+    if h.strip()
+)
 
 
 def dial_configured() -> bool:
@@ -89,12 +108,33 @@ async def dial_place_call(to: str, instruction: str,
 
 
 async def dial_fetch_media(media_url: str) -> bytes:
-    """Downloads a leaf photo from a Dial message.received media array entry."""
+    """Downloads a leaf photo from a Dial message.received media array entry.
+
+    Host-allowlisted (Dial CDN only) and size-capped: a forged webhook must
+    not turn this server into an SSRF proxy or a memory bomb.
+    """
+    parsed = urlparse(media_url or "")
+    if parsed.scheme != "https" or (parsed.netloc or "").lower() not in DIAL_MEDIA_HOSTS:
+        raise RuntimeError("Dial media host not allowlisted")
     headers = {"Authorization": f"Bearer {DIAL_API_KEY}"} if DIAL_API_KEY else {}
     async with httpx.AsyncClient(timeout=DIAL_TIMEOUT) as client:
-        resp = await client.get(media_url, headers=headers)
-        if resp.status_code != 200:
-            raise RuntimeError(f"Dial media fetch failed {resp.status_code}")
+        async with client.stream("GET", media_url, headers=headers) as resp:
+            if resp.status_code != 200:
+                raise RuntimeError(f"Dial media fetch failed {resp.status_code}")
+            chunks: List[bytes] = []
+            total = 0
+            async for chunk in resp.aiter_bytes(65536):
+                total += len(chunk)
+                if total > DIAL_MAX_MEDIA_BYTES:
+                    raise RuntimeError("Dial media exceeds size cap")
+                chunks.append(chunk)
+            raw = b"".join(chunks)
+    try:
+        with Image.open(io.BytesIO(raw)) as probe:
+            probe.verify()
+    except Exception:
+        raise RuntimeError("Dial media is not a decodable image")
+    return raw
 
 def _first(d: Dict[str, Any], *keys: str, default=None):
     for k in keys:
