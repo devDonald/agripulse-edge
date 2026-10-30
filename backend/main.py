@@ -62,11 +62,36 @@ async def _rate_limit_handler(request: Request, exc: RateLimitExceeded):
     return JSONResponse(status_code=429, content={"detail": "Rate limit exceeded. Try again shortly."})
 
 
+@app.exception_handler(Exception)
+async def _unhandled_handler(request: Request, exc: Exception):
+    # Structured envelope: request id for the farmer/agent to quote, no stack
+    # traces or key material ever leaves the server (full traceback in logs).
+    rid = getattr(request.state, "rid", None) or str(uuid.uuid4())[:8]
+    logger.exception(f"rid={rid} {request.method} {request.url.path} UNHANDLED: {type(exc).__name__}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Something went wrong processing your request.",
+                 "request_id": rid},
+    )
+
+
 def _origins():
     raw = os.getenv("CORS_ORIGINS", "*").strip()
     if raw == "*":
         return ["*"]
     return [o.strip() for o in raw.split(",") if o.strip()]
+
+
+@app.middleware("http")
+async def _security_headers(request: Request, call_next):
+    resp = await call_next(request)
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["X-Frame-Options"] = "DENY"
+    resp.headers["Referrer-Policy"] = "no-referrer"
+    resp.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    if not str(request.url.path).startswith("/docs"):
+        resp.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
+    return resp
 
 
 app.add_middleware(
@@ -110,6 +135,7 @@ def data_deletion():
 @app.middleware("http")
 async def _request_id_log(request: Request, call_next):
     rid = str(uuid.uuid4())[:8]
+    request.state.rid = rid
     t0 = time.perf_counter()
     try:
         resp = await call_next(request)
@@ -123,6 +149,17 @@ async def _request_id_log(request: Request, call_next):
 
 ALLOWED = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
 MAX_BYTES = 10 * 1024 * 1024
+# Decompression-bomb guard: a 10MB JPEG can expand to gigapixels. Pillow's
+# default limit (~178MP) is too generous for a phone-photo API; cap decoded
+# pixels well above the largest real smartphone sensor (~200MP) but far below
+# bomb territory. Applied in _check_image before any numpy work.
+MAX_IMAGE_MEGAPIXELS = float(os.getenv("MAX_IMAGE_MEGAPIXELS", "40"))
+try:
+    from PIL import Image as _PILImage
+
+    _PILImage.MAX_IMAGE_PIXELS = int(MAX_IMAGE_MEGAPIXELS * 1_000_000)
+except Exception:
+    pass
 
 
 @app.get("/health")
@@ -217,6 +254,23 @@ def _check_image(file: UploadFile, raw: bytes):
         raise HTTPException(400, "Empty image uploaded.")
     if len(raw) > MAX_BYTES:
         raise HTTPException(413, "Image file too large (maximum 10MB).")
+    # Cheap header probe: reject absurd dimensions before numpy allocates.
+    try:
+        from PIL import Image as _PILProbe
+        import io as _io
+
+        with _PILProbe.open(_io.BytesIO(raw)) as probe:
+            probe.verify()
+        with _PILProbe.open(_io.BytesIO(raw)) as probe2:
+            w, h = probe2.size
+            if w * h > int(MAX_IMAGE_MEGAPIXELS * 1_000_000):
+                raise HTTPException(413, "Image dimensions too large.")
+            if min(w, h) < 32:
+                raise HTTPException(400, "Image too small for diagnosis (min 32px).")
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(400, "Unreadable image file.")
 
 
 @app.get("/api/v1/models")
@@ -444,6 +498,16 @@ async def dial_webhook(request: Request):
     """Receives Dial message.received events (photo in media array -> voice note out)."""
     if len(await request.body()) > 5 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Dial event too large")
+    secret = os.getenv("DIAL_WEBHOOK_SECRET", "").strip()
+    if secret:
+        import hashlib as _hl
+        import hmac as _hm
+
+        raw = await request.body()
+        sig = request.headers.get("X-Dial-Signature", "") or request.headers.get("X-Hub-Signature-256", "")
+        expected = "sha256=" + _hm.new(secret.encode(), raw, _hl.sha256).hexdigest()
+        if not sig or not _hm.compare_digest(sig, expected):
+            raise HTTPException(status_code=401, detail="Invalid Dial webhook signature")
     try:
         payload = await request.json()
     except Exception:

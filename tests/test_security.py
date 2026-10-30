@@ -62,6 +62,60 @@ def test_dial_media_host_allowlist():
             assert "allowlisted" in str(e), str(e)
 
 
+def test_security_headers_present():
+    res = client.get("/health")
+    assert res.headers.get("X-Content-Type-Options") == "nosniff"
+    assert res.headers.get("X-Frame-Options") == "DENY"
+    assert "request_id" in res.headers.get("X-Request-ID", "x") or res.headers.get("X-Request-ID")
+
+
+def test_unhandled_errors_hide_internals():
+    res = client.post("/api/v1/mobile/sync-batch",
+                      json={"farmer_id": "x", "scans": [{"damage_percentage": "not-a-number"}]})
+    assert res.status_code in (200, 400, 422, 500)
+    if res.status_code == 500:
+        body = res.json()
+        assert "request_id" in body
+        assert "Traceback" not in str(body)
+
+
+def test_image_dimension_probe_rejects_tiny():
+    from PIL import Image
+    import io as _io
+    buf = _io.BytesIO()
+    Image.new("RGB", (8, 8), (60, 160, 60)).save(buf, format="JPEG")
+    res = client.post("/api/v1/segment",
+                      files={"file": ("tiny.jpg", buf.getvalue(), "image/jpeg")})
+    assert res.status_code == 400
+
+
+def test_dial_webhook_signature_enforced(monkeypatch):
+    import hashlib
+    import hmac
+    import json as _json
+
+    monkeypatch.setenv("DIAL_WEBHOOK_SECRET", "test-dial-secret")
+    import backend.main as _main
+    old = _main.os.getenv("DIAL_WEBHOOK_SECRET", "")
+    # Env is read at request time via os.getenv; patch module-level os is overkill —
+    # instead call the endpoint with the real env by setting it process-wide.
+    os.environ["DIAL_WEBHOOK_SECRET"] = "test-dial-secret"
+    try:
+        raw = _json.dumps({"type": "ping"}).encode()
+        bad = client.post("/api/v1/dial/webhook", content=raw,
+                          headers={"Content-Type": "application/json",
+                                   "X-Dial-Signature": "sha256=bad"})
+        assert bad.status_code == 401
+        good_sig = "sha256=" + hmac.new(b"test-dial-secret", raw, hashlib.sha256).hexdigest()
+        good = client.post("/api/v1/dial/webhook", content=raw,
+                           headers={"Content-Type": "application/json",
+                                    "X-Dial-Signature": good_sig})
+        assert good.status_code == 200
+    finally:
+        if not old:
+            os.environ.pop("DIAL_WEBHOOK_SECRET", None)
+
+
 def test_rate_limit_headers_present():
     res = client.get("/health")
     assert res.status_code == 200
