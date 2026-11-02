@@ -5,12 +5,16 @@ for playback in Streamlit UI and transmission over WhatsApp.
 """
 import io
 import math
+import os
 import struct
 from typing import Optional
 
 
 def synthesize_spoken_audio(text: str, language: str = "en") -> bytes:
     """Synthesizes speech audio bytes using gTTS with instant synthetic WAV fallback."""
+    if os.getenv("MOCK_MODE", "false").lower() in ("1", "true", "yes"):
+        return _generate_fallback_audio_wav()
+
     lang_map = {
         "english": "en",
         "pidgin": "en",  # English phonetics with West African prosody

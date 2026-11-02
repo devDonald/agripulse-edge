@@ -32,6 +32,7 @@ jobs:
       - name: Execute Tests (Mock Mode)
         env:
           MOCK_MODE: 'true'
+          PYTHONPATH: '.'
         run: |
           python -m pytest tests/ -v
           python scripts/test_stability_matrix.py
