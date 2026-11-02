@@ -106,6 +106,10 @@ WEB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 if os.path.isdir(WEB_DIR):
     app.mount("/site", StaticFiles(directory=WEB_DIR), name="site")
 
+SAMPLE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sample_data")
+if os.path.isdir(SAMPLE_DIR):
+    app.mount("/sample_data", StaticFiles(directory=SAMPLE_DIR), name="sample_data")
+
 
 @app.get("/", include_in_schema=False)
 def public_site():

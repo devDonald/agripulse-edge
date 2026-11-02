@@ -121,12 +121,20 @@ def get_history(farmer_id: str, limit: int = 20) -> dict:
     with _lock:
         cx = _conn()
         try:
-            rows = cx.execute(
-                "SELECT scan_id, client_scan_id, farmer_id, crop_name, disease_detected,"
-                " damage_percentage, severity, language, latitude, longitude, timestamp, synced_at"
-                " FROM scans WHERE farmer_id=? ORDER BY id DESC LIMIT ?",
-                (farmer_id, limit),
-            ).fetchall()
+            if farmer_id in ("all", "coop:all", "*"):
+                rows = cx.execute(
+                    "SELECT scan_id, client_scan_id, farmer_id, crop_name, disease_detected,"
+                    " damage_percentage, severity, language, latitude, longitude, timestamp, synced_at"
+                    " FROM scans ORDER BY id DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
+            else:
+                rows = cx.execute(
+                    "SELECT scan_id, client_scan_id, farmer_id, crop_name, disease_detected,"
+                    " damage_percentage, severity, language, latitude, longitude, timestamp, synced_at"
+                    " FROM scans WHERE farmer_id=? ORDER BY id DESC LIMIT ?",
+                    (farmer_id, limit),
+                ).fetchall()
             cols = [d[0] for d in cx.execute("SELECT * FROM scans LIMIT 0").description]
         finally:
             cx.close()
