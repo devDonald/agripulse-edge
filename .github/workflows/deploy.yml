@@ -68,10 +68,18 @@ jobs:
           HOST: ${{ secrets.EC2_HOST || env.DEFAULT_HOST }}
           USER: ${{ secrets.EC2_USER || env.DEFAULT_USER }}
         run: |
-          ssh $USER@$HOST << 'EOF'
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $USER@$HOST << 'EOF' > deploy.log 2>&1 || true
             set -e
             echo "🚀 Updating AgriPulse Edge code on EC2..."
-            cd /opt/agripulse/app
+            if [ -d "/opt/agripulse/app" ]; then
+              cd /opt/agripulse/app
+            elif [ -d "$HOME/agripulse" ]; then
+              cd "$HOME/agripulse"
+            else
+              echo "Searching for repo dir..."
+              cd $(find /opt /home -maxdepth 3 -name "agripulse-edge" -o -name "agri-diagnose-backend" 2>/dev/null | head -1)
+            fi
+            echo "Current directory: $(pwd)"
 
             # Pull latest git commit
             git fetch origin main
@@ -96,12 +104,12 @@ jobs:
             sudo systemctl reload caddy || sudo systemctl restart caddy
 
             echo "🔍 Verifying internal health..."
-            for i in {1..15}; do
+            for i in {1..20}; do
               if curl -s http://127.0.0.1:8000/health | grep -q "healthy"; then
                 echo "✅ AgriPulse container is healthy and responding!"
                 exit 0
               fi
-              echo "Waiting for container startup ($i/15)..."
+              echo "Waiting for container startup ($i/20)..."
               sleep 2
             done
 
@@ -109,6 +117,17 @@ jobs:
             docker logs --tail 40 agripulse
             exit 1
           EOF
+          cat deploy.log
+          echo "### Deploy Log" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          tail -n 80 deploy.log >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          if grep -q "AgriPulse container is healthy" deploy.log; then
+            echo "Deploy successful!"
+          else
+            echo "::error::Deploy failed on EC2 host"
+            exit 1
+          fi
 
       - name: Verify Live Endpoints
         env:
