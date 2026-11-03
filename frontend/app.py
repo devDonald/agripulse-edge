@@ -297,7 +297,7 @@ def decode_mask_image(b64: str) -> Image.Image:
 
 
 def api_diagnose(img_bytes: bytes, name: str, offline: bool, model_id: str = None,
-                 use_live: bool = False) -> dict:
+                 use_live: bool = False, expected_crop: str = None) -> dict:
     mime = "image/png" if name.lower().endswith(".png") else "image/jpeg"
     endpoint = "/api/v1/diagnose-edge" if offline else "/api/v1/diagnose"
     params = {}
@@ -305,6 +305,8 @@ def api_diagnose(img_bytes: bytes, name: str, offline: bool, model_id: str = Non
         params["model_id"] = model_id
         if use_live:
             params["use_live"] = "true"
+    if expected_crop:
+        params["expected_crop"] = expected_crop
     resp = requests.post(f"{BACKEND_URL}{endpoint}", files={"file": (name, img_bytes, mime)},
                          params=params, timeout=120)
     if resp.status_code != 200:
@@ -358,22 +360,22 @@ with tab_clinic:
         st.markdown('<div class="card"><h3>📸 1 · Choose a leaf</h3><div class="hint">Tap a sample preset or upload a field photo (JPG/PNG/WebP).</div>',
                     unsafe_allow_html=True)
         sample_map = {
-            "cassava": ("🍃 Cassava Mosaic", "cassava_mosaic.jpg"),
-            "maize": ("🌽 Maize Armyworm", "maize_fall_armyworm.jpg"),
-            "maize_rust": ("🌽 Maize Rust", "user_maize_rust.jpg"),
-            "tomato": ("🍅 Tomato Blight", "tomato_early_blight.jpg"),
-            "yam": ("🍠 Yam Anthracnose", "yam_anthracnose.jpg"),
-            "cowpea": ("🫛 Cowpea Aphids", "cowpea_aphids.jpg"),
-            "sorghum": ("🌾 Sorghum Blight", "sorghum_anthracnose.jpg"),
-            "rice": ("🍚 Rice Blast", "rice_blast.jpg"),
-            "pepper": ("🌶️ Pepper Spot", "pepper_spot.jpg"),
-            "okra": ("🥬 Okra Mosaic", "okra_mosaic.jpg"),
-            "groundnut": ("🥜 Groundnut Rosette", "groundnut_rosette.jpg"),
-            "sweetpotato": ("🍠 Sweet Potato Virus", "sweetpotato_virus.jpg"),
-            "healthy": ("🌿 Healthy Leaf", "healthy_leaf.jpg"),
+            "cassava": ("🍃 Cassava Mosaic", "cassava_mosaic.jpg", "cassava"),
+            "maize": ("🌽 Maize Armyworm", "maize_fall_armyworm.jpg", "maize"),
+            "maize_rust": ("🌽 Maize Rust", "user_maize_rust.jpg", "maize"),
+            "tomato": ("🍅 Tomato Blight", "tomato_early_blight.jpg", "tomato"),
+            "yam": ("🍠 Yam Anthracnose", "yam_anthracnose.jpg", "yam"),
+            "cowpea": ("🫛 Cowpea Aphids", "cowpea_aphids.jpg", "cowpea"),
+            "sorghum": ("🌾 Sorghum Blight", "sorghum_anthracnose.jpg", "sorghum"),
+            "rice": ("🍚 Rice Blast", "rice_blast.jpg", "rice"),
+            "pepper": ("🌶️ Pepper Spot", "pepper_spot.jpg", "pepper"),
+            "okra": ("🥬 Okra Mosaic", "okra_mosaic.jpg", "okra"),
+            "groundnut": ("🥜 Groundnut Rosette", "groundnut_rosette.jpg", "groundnut"),
+            "sweetpotato": ("🍠 Sweet Potato Virus", "sweetpotato_virus.jpg", "sweet_potato"),
+            "healthy": ("🌿 Healthy Leaf", "healthy_leaf.jpg", None),
         }
         preset_cols = st.columns(4)
-        for idx, (k, (label, fname)) in enumerate(sample_map.items()):
+        for idx, (k, (label, fname, crop_code)) in enumerate(sample_map.items()):
             p = os.path.join(SAMPLE_DIR, fname)
             with preset_cols[idx % 4]:
                 if os.path.exists(p):
@@ -385,6 +387,7 @@ with tab_clinic:
                         with open(p, "rb") as f:
                             st.session_state.img_bytes = f.read()
                         st.session_state.img_name = fname
+                        st.session_state.expected_crop = crop_code
                         raw_img = Image.open(io.BytesIO(st.session_state.img_bytes))
                         st.session_state.orig_img = ImageOps.exif_transpose(raw_img).convert("RGB")
                         st.session_state.diagnosis = None
@@ -397,6 +400,17 @@ with tab_clinic:
             st.session_state.img_name = uploader.name
             raw_img = Image.open(io.BytesIO(st.session_state.img_bytes))
             st.session_state.orig_img = ImageOps.exif_transpose(raw_img).convert("RGB")
+
+        crop_hint_opts = ["Auto-detect", "Cassava", "Maize", "Tomato", "Yam", "Cowpea", "Sorghum", "Rice", "Pepper", "Okra", "Groundnut", "Sweet potato"]
+        default_hint_idx = 0
+        if st.session_state.get("expected_crop"):
+            for idx, opt in enumerate(crop_hint_opts):
+                if opt.lower().replace(" ", "_") == st.session_state.expected_crop:
+                    default_hint_idx = idx
+                    break
+        chosen_hint = st.selectbox("Crop hint (helps visual focus & pathology)", crop_hint_opts, index=default_hint_idx)
+        if chosen_hint != "Auto-detect":
+            st.session_state.expected_crop = chosen_hint.lower().replace(" ", "_")
 
         if st.session_state.orig_img is not None:
             st.image(st.session_state.orig_img, caption=f"Selected: {st.session_state.img_name}",
@@ -425,7 +439,8 @@ with tab_clinic:
                     _t0 = _t.perf_counter()
                     res = api_diagnose(st.session_state.img_bytes, st.session_state.img_name,
                                        IS_OFFLINE, model_id=None if IS_OFFLINE else eff_model,
-                                       use_live=use_live and not IS_OFFLINE)
+                                       use_live=use_live and not IS_OFFLINE,
+                                       expected_crop=st.session_state.get("expected_crop"))
                     res["_latency_ms"] = int((_t.perf_counter() - _t0) * 1000)
                     st.session_state.diagnosis = res
                     seg = res.get("segmentation") or {}

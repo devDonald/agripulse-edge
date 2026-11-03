@@ -325,14 +325,20 @@ async def diagnose(
     ),
     model_id: Optional[str] = Query(default=None, description="Meta model ID override"),
     use_live: bool = Query(default=False, description="Bill this call on dev.meta.ai"),
+    expected_crop: Optional[str] = Query(
+        default=None, max_length=40,
+        description="Farmer-selected crop hint (e.g. cassava, maize, tomato, etc.)",
+    ),
 ):
     """Diagnoses crop leaf pathology and fuses SAM 2 lesion area measurement."""
     raw = await file.read()
     _check_image(file, raw)
 
     try:
-        result = await diagnose_image(raw, file.content_type, force_offline=force_offline,
-                                      model_id=model_id, use_live=use_live)
+        result = await diagnose_image(
+            raw, file.content_type, force_offline=force_offline,
+            model_id=model_id, use_live=use_live, expected_crop=expected_crop,
+        )
     except ValidationError as e:
         raise HTTPException(502, f"Model returned invalid schema: {e}")
     except ValueError as e:
@@ -364,30 +370,11 @@ async def diagnose_edge(
     file: UploadFile = File(..., description="Crop leaf photo for offline edge diagnosis"),
     expected_crop: Optional[str] = Query(
         default=None, max_length=40,
-        description="Farmer-selected crop hint (weak prior only — leaf shape stays authoritative)",
+        description="Farmer-selected crop hint (e.g. cassava, maize, etc.)",
     ),
 ):
     """Guaranteed zero-data offline edge diagnosis using simulated ExecuTorch on-device pipeline."""
-    resp = await diagnose(request, file, force_offline=True)
-    if expected_crop:
-        try:
-            import json as _json
-
-            body = _json.loads(resp.body.decode())
-            hint = expected_crop.strip().lower()
-            actual = str(body.get("crop_name", "")).lower()
-            if hint and actual and hint != actual and hint in (
-                    "cassava", "maize", "tomato", "yam", "cowpea", "sorghum",
-                    "rice", "pepper", "okra", "groundnut", "sweet_potato"):
-                body["hint_agree"] = False
-                body["hint_note"] = (
-                    f"You picked {hint} but the leaf reads {actual} — trusting the leaf.")
-            else:
-                body["hint_agree"] = True
-            return JSONResponse(content=body)
-        except Exception:
-            pass
-    return resp
+    return await diagnose(request, file, force_offline=True, expected_crop=expected_crop)
 
 
 @app.post("/api/v1/segment", response_model=SegmentationResult)

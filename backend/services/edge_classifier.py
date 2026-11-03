@@ -280,7 +280,7 @@ def _compute_image_features(img: Image.Image) -> dict:
     }
 
 
-def classify_leaf_on_device(image_bytes: bytes) -> EdgeClassification:
+def classify_leaf_on_device(image_bytes: bytes, expected_crop: str = None) -> EdgeClassification:
     """Executes on-device simulated ExecuTorch classification based on extracted leaf features."""
     t0 = time.perf_counter()
     img = Image.open(io.BytesIO(image_bytes))
@@ -335,11 +335,11 @@ def classify_leaf_on_device(image_bytes: bytes) -> EdgeClassification:
     # to 20-180x smooth-leaf values, invariant to dim/blur/downscale light.
     # Spot count is the secondary confirmation (merges under blur).
     if spots >= 400 and chlor < 0.50:
-        crop = "maize"
+        auto_crop = "maize"
     elif compact > 20.0 and dmg >= 12:
-        crop = "maize"
+        auto_crop = "maize"
     elif spots >= 150 and dmg >= 15 and chlor >= 0.08 and compact > 5.0:
-        crop = "maize"
+        auto_crop = "maize"
     # A blade-like mask is NEVER cassava/tomato no matter how yellow it is.
     elif elong > 3.0:
         # Thin ribbon blades split first by bounding-box aspect: rice blades
@@ -347,61 +347,87 @@ def classify_leaf_on_device(image_bytes: bytes) -> EdgeClassification:
         if elong > 5.0 and (aspect > 2.5 or (leaf_ratio < 0.08 and aspect > 1.8)):
             # Rice: tall-thin box OR sparse thin blade (phone angles vary).
             # aspect floor on the fallback: rotated maize dips sparse but boxy.
-            crop = "rice"
+            auto_crop = "rice"
         elif elong > 4.0 and 0.10 <= leaf_ratio < 0.20 and extent < 0.30 and necr <= 0.05 and holes <= 0.01 and spots < 200:
             # Clean broad blade (sorghum) — maize tight-crops keep holes/necrosis/speckle.
-            crop = "sorghum"
+            auto_crop = "sorghum"
         else:
-            crop = "maize"
+            auto_crop = "maize"
     elif leaf_ratio >= 0.25 and 1.5 <= compact < 8.0 and 1 <= lobes <= 3 and dmg >= 8 and extent >= 0.58 and chlor <= 0.15:
         # Huge single hastate blade (yam): fills frame, smooth, few lobes.
         # compact/lobes floors exclude featureless washed-out tomato zooms;
         # ceiling 8.0 tolerates sensor-noise speckle (nothing else lives 5-8).
         # extent floor 0.58 (not 0.60): noise erodes mask edges slightly.
         # Checked BEFORE the palmate split — yam polygon corners read as lobes.
-        crop = "yam"
+        auto_crop = "yam"
     elif leaflets == 4 and extent < 0.72:
         # Tetrafoliate groundnut: 4 separated ovals (erosion splits them).
-        crop = "groundnut"
+        auto_crop = "groundnut"
     elif leaflets == 3 and extent < 0.55 and leaf_ratio < 0.12:
         # Small separated ovals (pepper) — must precede cowpea: same count,
         # but pepper leaflets are small and sparse, cowpea large and dense.
-        crop = "pepper"
+        auto_crop = "pepper"
     elif lobes >= 3 and extent >= 0.68 and compact <= 2.5 and spots < 150 and 0.08 <= chlor <= 0.30 and leaflets <= 1:
         # Heart/ivy sweet potato: moderate mottling, smooth, SINGLE connected
         # leaf (fragmented tight-tomato zooms split into 4+ components).
         # Checked BEFORE the palmate split — heart leaves are smooth
         # (low compactness) and would otherwise fall to tomato.
-        crop = "sweet_potato"
+        auto_crop = "sweet_potato"
     elif leaflets >= 2 and chlor > 0.15 and 1.5 <= compact <= 3.5 and 0.55 <= extent <= 0.75:
         # Trifoliate cowpea: touching round leaflets merge to 2 blobs, but the
         # yellow-mottled blobby cluster with mid compactness is distinctive.
-        crop = "cowpea"
+        auto_crop = "cowpea"
     elif lobes >= 3 and compact > 1.6:
         # Palmate family: cassava vs okra vs sweet potato by lobe/compactness.
         # Cassava lobes are long finger-like (high radial variance -> counted);
         # okra is coarser (fewer, broader lobes); sweet potato is heart/ivy.
         if lobes >= 5 and extent < 0.60:
-            crop = "okra"
+            auto_crop = "okra"
         else:
-            crop = "cassava"
+            auto_crop = "cassava"
     elif pvein and not (lobes >= 3 and extent >= 0.65):
-        crop = "maize"  # parallel veins visible even in full-frame macros
+        auto_crop = "maize"  # parallel veins visible even in full-frame macros
     elif leaf_ratio < 0.15 and compact < 2.0 and dmg <= 25 and leaflets <= 1 and lobes <= 2:
         # Single small glossy oval (pepper solo leaf) — leaflets<=1 so the
         # compound-leaf rules above keep priority for trifoliate clusters.
-        crop = "pepper"
+        auto_crop = "pepper"
     elif not shape_known:
         # Tight macro: shape is the photo rectangle — only extreme mosaic + lobe
         # boundary complexity may claim cassava; yellow alone NEVER does.
         if chlor > 0.35 and compact > 2.0 and elong < 2.0:
-            crop = "cassava"
+            auto_crop = "cassava"
         else:
-            crop = "tomato"
+            auto_crop = "tomato"
     elif chlor > 0.35 and compact > 2.0 and elong < 2.0:
-        crop = "cassava"
+        auto_crop = "cassava"
     else:
-        crop = "tomato"
+        auto_crop = "tomato"
+
+    # Evaluate expected_crop hint: respect it unless decisive leaf shape contradicts it
+    crop = auto_crop
+    clean_hint = (expected_crop or "").strip().lower().replace(" ", "_").replace("-", "_")
+    valid_crops = {
+        "cassava", "maize", "corn", "tomato", "yam", "cowpea",
+        "sorghum", "rice", "pepper", "okra", "groundnut", "peanut",
+        "sweet_potato", "sweetpotato"
+    }
+    if clean_hint in valid_crops:
+        norm_hint = "maize" if clean_hint in ("maize", "corn") else (
+            "sweet_potato" if clean_hint in ("sweet_potato", "sweetpotato") else (
+                "groundnut" if clean_hint in ("groundnut", "peanut") else clean_hint
+            )
+        )
+        contradicts = False
+        # Decisive contradiction guards:
+        # A strap-like parallel-veined elongated blade (elong > 3.0 or pvein) is NEVER cassava/tomato/yam
+        if norm_hint in ("cassava", "okra", "yam", "tomato") and (elong > 3.0 or pvein):
+            contradicts = True
+        # A palmate lobed leaf is NEVER maize/rice/sorghum
+        elif norm_hint in ("maize", "rice", "sorghum") and (lobes >= 3 and compact > 1.8):
+            contradicts = True
+
+        if not contradicts:
+            crop = norm_hint
 
     def _sev(high: int, mid: int) -> str:
         return "severe" if dmg > high else ("moderate" if dmg > mid else "low")

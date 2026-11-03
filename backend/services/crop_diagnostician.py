@@ -97,6 +97,12 @@ class DiagnosisResult(BaseModel):
     needs_review: bool = Field(
         default=False, description="True when confidence is low — ask farmer to retake"
     )
+    hint_agree: Optional[bool] = Field(
+        default=None, description="True if visual detection matches expected_crop hint"
+    )
+    hint_note: Optional[str] = Field(
+        default=None, description="Advisory note on crop hint vs visual detection"
+    )
 
     @field_validator("crop_name", "disease_detected")
     @classmethod
@@ -434,8 +440,9 @@ async def diagnose_image(
     force_offline: bool = False,
     model_id: Optional[str] = None,
     use_live: bool = False,
+    expected_crop: Optional[str] = None,
 ) -> DiagnosisResult:
-    """Diagnoses crop leaf photo using Meta Model API (online) or Edge Classifier (offline).
+    """Diagnoses crop leaf photo using Meta Model API (online multimodal) or Edge Classifier (offline).
 
     model_id: one of backend.services.meta_models.META_MODEL_IDS. Edge model IDs
         (llama-3.2-*-edge) route to the on-device classifier; cloud Muse IDs
@@ -443,6 +450,7 @@ async def diagnose_image(
         dev.meta.ai meters usage.
     use_live: when True, bypass MOCK_MODE gating and attempt a real API call
         (dashboard "Use Live dev.meta.ai Credits" toggle).
+    expected_crop: farmer-selected crop hint (e.g. 'cassava', 'maize', etc.)
     """
     if not image_bytes:
         raise ValueError("Empty image file uploaded")
@@ -451,17 +459,16 @@ async def diagnose_image(
     active_model = spec["id"]
     edge_requested = is_edge(active_model)
 
-    # Gatekeeper: reject non-leaf photos BEFORE spending cloud credits. The probe
-    # result is reused as ensemble context for the cloud call below (no double work).
+    # Gatekeeper: reject non-leaf photos BEFORE spending cloud credits.
     cloud_live = not (force_offline or edge_requested or ((MOCK_MODE and not use_live) or not META_API_KEY))
-    edge_probe = classify_leaf_on_device(image_bytes)
+    edge_probe = classify_leaf_on_device(image_bytes, expected_crop=expected_crop)
     if not edge_probe.is_leaf:
         raise ValueError(
             "No vegetative crop leaf detected. Please take a clear, well-lit photo of a crop leaf."
         )
 
     # If offline mode, no Meta API key (and not live-forced), or an edge model
-    # was explicitly selected, return the genuine on-device classification
+    # was explicitly selected, return the on-device classification
     if not cloud_live:
         edge = edge_probe
         remedies = _get_remedies_for_crop(edge.crop_name, edge.disease_detected)
@@ -472,6 +479,22 @@ async def diagnose_image(
                 if "1b" in active_model
                 else "llama-3.2-3b-edge-int8.pte"
             )
+
+        hint_agree = None
+        hint_note = None
+        if expected_crop:
+            norm_exp = expected_crop.strip().lower().replace(" ", "_").replace("-", "_")
+            if norm_exp in (
+                "cassava", "maize", "tomato", "yam", "cowpea", "sorghum",
+                "rice", "pepper", "okra", "groundnut", "sweet_potato"
+            ):
+                hint_agree = (norm_exp == edge.crop_name.lower())
+                hint_note = (
+                    f"Confirmed {edge.crop_name} leaf."
+                    if hint_agree
+                    else f"You picked {expected_crop} but the leaf reads {edge.crop_name} — trusting the leaf."
+                )
+
         result = DiagnosisResult(
             crop_name=edge.crop_name,
             disease_detected=edge.disease_detected,
@@ -481,105 +504,84 @@ async def diagnose_image(
             symptoms=edge.symptoms,
             organic_remedies=remedies,
             edge_metrics=metrics,
+            hint_agree=hint_agree,
+            hint_note=hint_note,
         )
         result.model_used = active_model  # type: ignore[attr-defined]
         result.live_call = False  # type: ignore[attr-defined]
         return result
 
-    # Cloud inference via Meta Model API with retries — model=active_model so
-    # the dev.meta.ai usage dashboard records the call under the right model.
-    # NOTE: the live Muse catalog is text-reasoning (no image_url parts on this
-    # key), so the photo is analyzed on-device for shape/color while Muse
-    # provides the pathology reasoning — a genuine cloud+edge ensemble.
-    # edge_probe (gatekeeper above) is reused as the ensemble context.
-    # The shape verdict is authoritative: a blade-shaped mask is maize even if
-    # yellow, a lobed mask is cassava. The cloud model may refine disease but
-    # MUST NOT contradict the crop — mismatches fall back to the probe below.
-    shape_note = ""
-    try:
-        _feats = _compute_image_features(Image.open(io.BytesIO(image_bytes)))
-        if _feats.get("is_leaf"):
-            shape_note = (
-                f" Measured leaf architecture: elongation={_feats.get('shape_elongation', 0):.1f}, "
-                f"lobes={_feats.get('shape_lobes', 0)}, "
-                f"parallel_veins={_feats.get('shape_parallel_veins', False)}."
-            )
-    except Exception:
-        pass
-    probe_ctx = (
-        f"On-device leaf scan: crop={edge_probe.crop_name}, "
-        f"disease={edge_probe.disease_detected}, damage={edge_probe.damage_percentage}%, "
-        f"symptoms={'; '.join(edge_probe.symptoms)}."
-        if edge_probe.is_leaf else
-        "On-device leaf scan: no clear leaf detected."
+    # ── TRUE MULTIMODAL CLOUD VISION (Meta AI muse-spark-1.3 / muse-spark-1.2) ──
+    vision_model = active_model
+    if not vision_model or vision_model in ("muse-image-1.0", "sam-3.1") or is_edge(vision_model):
+        vision_model = "muse-spark-1.3"
+
+    b64 = encode_image_to_base64(image_bytes)
+    data_url = f"data:{mime_type};base64,{b64}"
+
+    crop_hint_clause = ""
+    if expected_crop:
+        norm_exp = expected_crop.strip().lower().replace(" ", "_")
+        crop_hint_clause = (
+            f"FARMER CROP CONTEXT: The user specified crop hint '{norm_exp}'. "
+            f"Verify if leaf morphology and foliar structure are consistent with {norm_exp} "
+            f"and diagnose conditions specific to {norm_exp}.\n\n"
+        )
+
+    sys_prompt = (
+        "You are a Senior Agronomist specializing in West African smallholder farming "
+        "(Nigeria, Ghana, Côte d'Ivoire, Cameroon). You specialize in 11 staple crops: "
+        "cassava, maize, tomato, yam, cowpea, sorghum, rice, pepper, okra, groundnut, and sweet potato.\n\n"
+        f"{crop_hint_clause}"
+        "Standard pathologies by crop:\n"
+        "- Cassava: Cassava Mosaic Disease (CMD), Cassava Bacterial Blight, Cassava Brown Streak, Healthy Crop\n"
+        "- Maize: Maize Common Rust (Puccinia sorghi), Fall Armyworm (Spodoptera frugiperda), Maize Streak Virus, Northern Leaf Blight, Healthy Crop\n"
+        "- Tomato: Early Blight (Alternaria solani), Tomato Yellow Leaf Curl, Bacterial Spot, Healthy Crop\n"
+        "- Yam: Yam Anthracnose (Colletotrichum gloeosporioides), Yam Mosaic Virus, Healthy Crop\n"
+        "- Cowpea: Cowpea Aphid Infestation, Cowpea Yellow Mosaic Virus, Bacterial Blight, Healthy Crop\n"
+        "- Sorghum: Sorghum Anthracnose, Sorghum Leaf Blight, Covered Kernel Smut, Healthy Crop\n"
+        "- Rice: Rice Blast (Magnaporthe oryzae), Rice Bacterial Leaf Blight, Brown Spot, Healthy Crop\n"
+        "- Pepper: Pepper Bacterial Leaf Spot, Pepper Mosaic Virus, Anthracnose, Healthy Crop\n"
+        "- Okra: Okra Yellow Vein Mosaic Virus, Okra Powdery Mildew, Healthy Crop\n"
+        "- Groundnut: Groundnut Rosette Virus, Groundnut Early Leaf Spot, Rust, Healthy Crop\n"
+        "- Sweet Potato: Sweet Potato Virus Disease (SPVD), Alternaria Leaf Spot, Healthy Crop\n\n"
+        "TASKS:\n"
+        "1. Identify the crop species accurately from the foliar architecture in the photo.\n"
+        "2. Detect the exact pathology (or confirm Healthy Crop) from visible lesions, pustules, mottling, or feeding holes.\n"
+        "3. Estimate realistic damage_percentage (0 to 100) and severity ('low', 'moderate', or 'severe').\n"
+        "4. List 2 to 4 distinct observable symptoms.\n\n"
+        "OUTPUT FORMAT: Return STRICT JSON ONLY without markdown fences or additional conversational text.\n"
+        "Schema:\n"
+        "{\n"
+        '  "crop_name": "<cassava|maize|tomato|yam|cowpea|sorghum|rice|pepper|okra|groundnut|sweet_potato>",\n'
+        '  "disease_detected": "<disease name or Healthy Crop>",\n'
+        '  "confidence": 0.85,\n'
+        '  "damage_percentage": 30,\n'
+        '  "severity": "low|moderate|severe",\n'
+        '  "symptoms": ["symptom 1", "symptom 2", "symptom 3"]\n'
+        "}"
     )
 
-    # TRUE VISION first: the photo goes to muse-image-1.0 via /v1/responses
-    # (pixel-grounded verdict, billed per photo). The probe stays as gatekeeper
-    # + crop guard + ensemble context. Text-only path below is the fallback.
-    last_error = None
-    usage: Optional[dict] = None
-
-    def _vision_attempt() -> DiagnosisResult:
-        from backend.services.vision_client import ask_muse_image
-
-        r = ask_muse_image(image_bytes, VISION_DIAGNOSIS_QUESTION)
-        try:
-            parsed = _extract_json(r["verdict"])
-            out = DiagnosisResult(
-                crop_name=parsed.get("crop_name", edge_probe.crop_name),
-                disease_detected=parsed.get("disease_detected", edge_probe.disease_detected),
-                confidence=float(parsed.get("confidence", 0.85)),
-                damage_percentage=int(parsed.get("damage_percentage", edge_probe.damage_percentage)),
-                severity=Severity(str(parsed.get("severity", edge_probe.severity)).lower()),
-                symptoms=list(parsed.get("symptoms", edge_probe.symptoms)) or edge_probe.symptoms,
-                organic_remedies=_get_remedies_for_crop(
-                    str(parsed.get("crop_name", edge_probe.crop_name)),
-                    str(parsed.get("disease_detected", edge_probe.disease_detected))),
-            )
-        except (ValueError, KeyError, TypeError):
-            # muse-image reasons in prose and truncates before JSON — mine its
-            # own words for crop/disease (still pixel-grounded), probe for numbers.
-            out = _diagnosis_from_verdict_text(r["verdict"], edge_probe)
-        if out.crop_name.strip().lower() != edge_probe.crop_name.strip().lower():
-            logger.warning(
-                f"Crop mismatch (vision={out.crop_name} vs probe={edge_probe.crop_name}); "
-                "keeping probe crop."
-            )
-            raise ValueError(
-                f"Vision crop '{out.crop_name}' contradicts on-device verdict "
-                f"'{edge_probe.crop_name}'"
-            )
-        out.model_used = "muse-image-1.0"  # type: ignore[attr-defined]
-        out.live_call = True  # type: ignore[attr-defined]
-        out.usage = r["usage"]  # type: ignore[attr-defined]
-        return out
-
-    try:
-        return await asyncio.to_thread(_vision_attempt)
-    except Exception as e:
-        last_error = str(e)[:300]
-        logger.warning(f"Vision diagnosis failed ({last_error}), trying text reasoning path.")
+    user_text = (
+        f"Diagnose this crop leaf photo. "
+        f"{f'Farmer specified: {expected_crop}. ' if expected_crop else ''}"
+        "Output strict JSON only."
+    )
 
     payload = {
-        "model": active_model,
+        "model": vision_model,
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": sys_prompt},
             {
                 "role": "user",
-                "content": (
-                    f"{probe_ctx}{shape_note}\n"
-                    "Field photo context: West African smallholder cassava/maize/tomato farm. "
-                    "The on-device crop verdict above is AUTHORITATIVE — return the SAME crop_name. "
-                    "You may refine disease_detected, symptoms, and damage, but NEVER change the crop. "
-                    "Provide an expert pathology diagnosis in strict JSON."
-                ),
+                "content": [
+                    {"type": "text", "text": user_text},
+                    {"type": "image_url", "image_url": {"url": data_url}},
+                ],
             },
         ],
-        "temperature": 0.2,
-        # Muse reasoning models spend tokens thinking; keep a generous budget so
-        # visible JSON survives (small caps return content=null with finish=length).
-        "max_tokens": 4000,
+        "temperature": 0.1,
+        "max_tokens": 3000,
     }
 
     headers = {
@@ -587,6 +589,7 @@ async def diagnose_image(
         "Content-Type": "application/json",
     }
 
+    last_error = None
     for attempt in range(3):
         try:
             async with httpx.AsyncClient(timeout=META_TIMEOUT) as client:
@@ -596,31 +599,62 @@ async def diagnose_image(
                     usage = data.get("usage")
                     content = _extract_message_content(data["choices"][0])
                     parsed = _extract_json(content)
-                    out = DiagnosisResult(**parsed)
-                    # Crop guard: the cloud model never sees the photo, so if it
-                    # contradicts the shape-verified probe, trust the probe.
-                    if out.crop_name.strip().lower() != edge_probe.crop_name.strip().lower():
-                        logger.warning(
-                            f"Crop mismatch (cloud={out.crop_name} vs probe={edge_probe.crop_name}); "
-                            "keeping probe crop."
+
+                    # Extract and normalize detected crop
+                    raw_crop = str(parsed.get("crop_name", edge_probe.crop_name)).strip().lower().replace(" ", "_")
+                    if "corn" in raw_crop:
+                        crop_name = "maize"
+                    elif "sweet" in raw_crop:
+                        crop_name = "sweet_potato"
+                    elif "peanut" in raw_crop:
+                        crop_name = "groundnut"
+                    elif raw_crop in (
+                        "cassava", "maize", "tomato", "yam", "cowpea", "sorghum",
+                        "rice", "pepper", "okra", "groundnut", "sweet_potato"
+                    ):
+                        crop_name = raw_crop
+                    else:
+                        crop_name = edge_probe.crop_name
+
+                    disease = str(parsed.get("disease_detected", edge_probe.disease_detected)).strip()
+                    conf = float(parsed.get("confidence", 0.88))
+                    dmg = int(parsed.get("damage_percentage", edge_probe.damage_percentage))
+                    sev = str(parsed.get("severity", severity_for_damage(dmg).value)).lower()
+                    if sev not in ("low", "moderate", "severe"):
+                        sev = severity_for_damage(dmg).value
+
+                    symptoms = list(parsed.get("symptoms", edge_probe.symptoms)) or edge_probe.symptoms
+                    remedies = _get_remedies_for_crop(crop_name, disease)
+
+                    hint_agree = None
+                    hint_note = None
+                    if expected_crop:
+                        norm_exp = expected_crop.strip().lower().replace(" ", "_")
+                        hint_agree = (norm_exp == crop_name)
+                        hint_note = (
+                            f"Confirmed {crop_name} leaf."
+                            if hint_agree
+                            else f"You picked {expected_crop} but the leaf reads {crop_name} — trusting the leaf."
                         )
-                        raise ValueError(
-                            f"Cloud crop '{out.crop_name}' contradicts on-device verdict "
-                            f"'{edge_probe.crop_name}'"
-                        )
-                    out.model_used = active_model  # type: ignore[attr-defined]
+
+                    out = DiagnosisResult(
+                        crop_name=crop_name,
+                        disease_detected=disease,
+                        confidence=conf,
+                        damage_percentage=dmg,
+                        severity=Severity(sev),
+                        symptoms=symptoms,
+                        organic_remedies=remedies,
+                        hint_agree=hint_agree,
+                        hint_note=hint_note,
+                    )
+                    out.model_used = vision_model  # type: ignore[attr-defined]
                     out.live_call = True  # type: ignore[attr-defined]
                     if usage:
                         out.usage = usage  # type: ignore[attr-defined]
                     return out
-                # Retry 429/5xx with backoff; fail fast on 4xx (bad key/model) —
-                # except the image-model-on-chat error, which the vision-first
-                # flow already covered (fall through to probe, don't 502).
                 if resp.status_code in (429, 500, 502, 503, 504):
                     last_error = f"Meta API error {resp.status_code}: {resp.text[:300]}"
-                elif active_model in ("muse-image-1.0", "sam-3.1"):
-                    last_error = f"Image model {active_model} needs /v1/responses (already tried vision-first)"
-                    break
                 else:
                     raise RuntimeError(f"Meta API error {resp.status_code}: {resp.text[:500]}")
         except RuntimeError:
@@ -630,9 +664,20 @@ async def diagnose_image(
         await asyncio.sleep(0.5 * (2 ** attempt))
 
     logger.warning(f"Meta API call failed ({last_error}), falling back to on-device edge classification.")
-    # Graceful fallback: reuse the gatekeeper probe (identical result, no double work)
     edge = edge_probe
     remedies = _get_remedies_for_crop(edge.crop_name, edge.disease_detected)
+
+    hint_agree = None
+    hint_note = None
+    if expected_crop:
+        norm_exp = expected_crop.strip().lower().replace(" ", "_")
+        hint_agree = (norm_exp == edge.crop_name.lower())
+        hint_note = (
+            f"Confirmed {edge.crop_name} leaf."
+            if hint_agree
+            else f"You picked {expected_crop} but the leaf reads {edge.crop_name} — trusting the leaf."
+        )
+
     return DiagnosisResult(
         crop_name=edge.crop_name,
         disease_detected=edge.disease_detected,
@@ -645,6 +690,8 @@ async def diagnose_image(
             runtime="ExecuTorch v0.3.0 (Automatic Cloud Fallback)",
             inference_latency_ms=edge.metrics.inference_latency_ms,
         ),
-        model_used=active_model,
+        model_used=vision_model,
         live_call=False,
+        hint_agree=hint_agree,
+        hint_note=hint_note,
     )

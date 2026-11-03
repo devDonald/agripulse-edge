@@ -75,22 +75,22 @@ photo = st.file_uploader("Take photo or upload", type=["jpg", "jpeg", "png", "we
 st.markdown("##### ⚡ Quick Test Presets")
 _FBASE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sample_data")
 _PRESETS = [
-    ("🍃 Cassava", "cassava_mosaic.jpg"),
-    ("🌽 Maize", "maize_fall_armyworm.jpg"),
-    ("🌽 Maize Rust", "user_maize_rust.jpg"),
-    ("🍅 Tomato", "tomato_early_blight.jpg"),
-    ("🍠 Yam", "yam_anthracnose.jpg"),
-    ("🫛 Cowpea", "cowpea_aphids.jpg"),
-    ("🌾 Sorghum", "sorghum_anthracnose.jpg"),
-    ("🍚 Rice", "rice_blast.jpg"),
-    ("🌶️ Pepper", "pepper_spot.jpg"),
-    ("🥬 Okra", "okra_mosaic.jpg"),
-    ("🥜 Groundnut", "groundnut_rosette.jpg"),
-    ("🍠 Sweet Potato", "sweetpotato_virus.jpg"),
+    ("🍃 Cassava", "cassava_mosaic.jpg", "cassava"),
+    ("🌽 Maize", "maize_fall_armyworm.jpg", "maize"),
+    ("🌽 Maize Rust", "user_maize_rust.jpg", "maize"),
+    ("🍅 Tomato", "tomato_early_blight.jpg", "tomato"),
+    ("🍠 Yam", "yam_anthracnose.jpg", "yam"),
+    ("🫛 Cowpea", "cowpea_aphids.jpg", "cowpea"),
+    ("🌾 Sorghum", "sorghum_anthracnose.jpg", "sorghum"),
+    ("🍚 Rice", "rice_blast.jpg", "rice"),
+    ("🌶️ Pepper", "pepper_spot.jpg", "pepper"),
+    ("🥬 Okra", "okra_mosaic.jpg", "okra"),
+    ("🥜 Groundnut", "groundnut_rosette.jpg", "groundnut"),
+    ("🍠 Sweet Potato", "sweetpotato_virus.jpg", "sweet_potato"),
 ]
 for _row in range(0, len(_PRESETS), 3):
     _cols = st.columns(3)
-    for _i, (label, fname) in enumerate(_PRESETS[_row:_row + 3]):
+    for _i, (label, fname, crop_code) in enumerate(_PRESETS[_row:_row + 3]):
         with _cols[_i]:
             if st.button(label, use_container_width=True, key=f"pwa_{fname}"):
                 _p = os.path.join(_FBASE, fname)
@@ -98,12 +98,23 @@ for _row in range(0, len(_PRESETS), 3):
                     with open(_p, "rb") as f:
                         st.session_state.f_raw = f.read()
                         st.session_state.f_name = fname
+                        st.session_state.f_crop_hint = crop_code
                     st.rerun()
 
 # Single shared Diagnose step: uploader and presets both land in f_raw/f_name.
 if photo:
     st.session_state.f_raw = photo.getvalue()
     st.session_state.f_name = photo.name
+
+crop_opts = ["Auto-detect", "Cassava", "Maize", "Tomato", "Yam", "Cowpea", "Sorghum", "Rice", "Pepper", "Okra", "Groundnut", "Sweet potato"]
+default_idx = 0
+if st.session_state.get("f_crop_hint"):
+    for idx, opt in enumerate(crop_opts):
+        if opt.lower().replace(" ", "_") == st.session_state.f_crop_hint:
+            default_idx = idx
+            break
+user_crop = st.selectbox("Crop type (helps accuracy)", crop_opts, index=default_idx)
+
 if st.session_state.get("f_raw"):
     raw = st.session_state.f_raw
     st.session_state.f_img = Image.open(io.BytesIO(raw)).convert("RGB")
@@ -113,8 +124,12 @@ if st.session_state.get("f_raw"):
         try:
             status_box.info("🔍 Step 1/3: Running ExecuTorch leaf diagnosis...")
             files = {"file": (st.session_state.get("f_name", "leaf.jpg"), raw, "image/jpeg")}
+            params = {}
+            eff_crop = user_crop.lower().replace(" ", "_") if user_crop != "Auto-detect" else st.session_state.get("f_crop_hint")
+            if eff_crop:
+                params["expected_crop"] = eff_crop
             diag = requests.post(f"{BACKEND_URL}/api/v1/diagnose-edge",
-                                 files=files, timeout=120).json()
+                                 files=files, params=params, timeout=120).json()
             st.session_state.f_diag = diag
             ctx = {"crop_name": diag.get("crop_name"),
                    "disease_detected": diag.get("disease_detected")}
