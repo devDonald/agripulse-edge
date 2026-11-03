@@ -120,6 +120,8 @@ $('#diagnose').addEventListener('click', async () => {
 });
 
 function renderDiagnosis() {
+  if (!diagnosis) return;
+  resetAdviceAudio();
   $('#result-disease').textContent = diagnosis.disease_detected || 'Condition detected';
   const engine = diagnosis.segmentation?.method_used || diagnosis.model_used || (diagnosis.edge_metrics ? 'ExecuTorch Edge' : 'AgriPulse ensemble');
   $('#result-crop').textContent = `${(diagnosis.crop_name || 'Crop').toUpperCase()} · ${Math.round((diagnosis.confidence || 0) * 100)}% confidence · ${engine}`;
@@ -163,21 +165,118 @@ function renderDiagnosis() {
   $('#result-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+let currentAudioUrl = null;
+let currentAudioLang = null;
+
+function resetAdviceAudio() {
+  const audio = $('#advice-audio');
+  if (audio) {
+    audio.pause();
+    audio.currentTime = 0;
+  }
+  if (currentAudioUrl) {
+    try { URL.revokeObjectURL(currentAudioUrl); } catch (_) {}
+    currentAudioUrl = null;
+    currentAudioLang = null;
+  }
+  const btn = $('#play-advice');
+  if (btn) {
+    btn.innerHTML = '▶ <span>Play voice guidance</span>';
+    btn.classList.remove('playing');
+    btn.disabled = false;
+  }
+}
+
+const adviceAudio = $('#advice-audio');
+if (adviceAudio) {
+  adviceAudio.addEventListener('play', () => {
+    const btn = $('#play-advice');
+    if (btn) {
+      btn.innerHTML = '⏸ <span>Pause voice guidance</span>';
+      btn.classList.add('playing');
+    }
+  });
+
+  adviceAudio.addEventListener('pause', () => {
+    const btn = $('#play-advice');
+    if (btn) {
+      if (adviceAudio.ended) {
+        btn.innerHTML = '▶ <span>Play voice guidance</span>';
+      } else {
+        btn.innerHTML = '▶ <span>Resume voice guidance</span>';
+      }
+      btn.classList.remove('playing');
+    }
+  });
+
+  adviceAudio.addEventListener('ended', () => {
+    const btn = $('#play-advice');
+    if (btn) {
+      btn.innerHTML = '▶ <span>Play voice guidance</span>';
+      btn.classList.remove('playing');
+    }
+  });
+
+  adviceAudio.addEventListener('error', () => {
+    const btn = $('#play-advice');
+    if (btn) {
+      btn.innerHTML = '▶ <span>Play voice guidance</span>';
+      btn.classList.remove('playing');
+    }
+    toast('Audio playback failed.', true);
+  });
+}
+
 $('#play-advice').addEventListener('click', async () => {
   if (!advisory?.spoken_reply) return toast('Voice guidance is not available for this result.', true);
+  const audio = $('#advice-audio');
+  const btn = $('#play-advice');
+  const lang = $('#language').value;
+
+  // Toggle: If currently playing, clicking pauses playback
+  if (!audio.paused && !audio.ended) {
+    audio.pause();
+    return;
+  }
+
+  // Toggle: If already loaded and paused for the same language, resume
+  if (currentAudioUrl && currentAudioLang === lang && audio.src) {
+    try {
+      await audio.play();
+    } catch (err) {
+      toast(err.message || 'Audio playback error', true);
+    }
+    return;
+  }
+
+  // Otherwise, synthesize new audio for the current advisory & selected language
   try {
+    btn.disabled = true;
+    btn.innerHTML = '⏳ <span>Generating voice…</span>';
     const res = await fetch('/api/v1/voice-synthesize', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: advisory.spoken_reply.slice(0, 500), language: $('#language').value }),
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: advisory.spoken_reply.slice(0, 500), language: lang }),
     });
     if (!res.ok) throw new Error('Audio generation failed');
-    const url = URL.createObjectURL(await res.blob());
-    const audio = $('#advice-audio');
-    audio.src = url;
+    if (currentAudioUrl) {
+      try { URL.revokeObjectURL(currentAudioUrl); } catch (_) {}
+    }
+    currentAudioUrl = URL.createObjectURL(await res.blob());
+    currentAudioLang = lang;
+    audio.src = currentAudioUrl;
     await audio.play();
   } catch (err) {
-    toast(err.message, true);
+    toast(err.message || 'Could not play voice guidance.', true);
+    btn.innerHTML = '▶ <span>Play voice guidance</span>';
+    btn.classList.remove('playing');
+  } finally {
+    btn.disabled = false;
   }
+});
+
+$('#language')?.addEventListener('change', () => {
+  resetAdviceAudio();
 });
 
 async function loadHistoryRecords() {
