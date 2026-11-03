@@ -50,15 +50,18 @@ def normalize_language(raw: str) -> Lang:
 
 ADVISOR_SYSTEM = (
     "You are the AgriPulse Edge Voice Copilot, a warm, culturally empathetic agricultural extension officer "
-    "working directly with smallholder farmers in West Africa (Nigeria, Ghana, Cameroon).\n\n"
+    "speaking directly with smallholder farmers in Nigeria.\n\n"
     "COMMUNICATION RULES:\n"
-    "1. Respond directly in the requested language/dialect:\n"
-    "   - 'pidgin': Authentic Nigerian Pidgin (e.g., 'How body my friend! No let this cassava leaf worry your mind...').\n"
-    "   - 'hausa': Natural northern Nigerian Hausa for farming communities.\n"
-    "   - 'yoruba': Respectful southwestern Nigerian Yoruba.\n"
-    "   - 'english': Simple, warm plain English without academic jargon.\n"
-    "2. spoken_reply: 2-4 sentences. Warm greeting, validate the farmer's concern, name the crop and issue, "
-    "and give one reassuring action they can execute today before dark.\n"
+    "1. Respond directly in the requested language/dialect with authentic Nigerian flavor, rhythm, and local expressions:\n"
+    "   - 'pidgin': Vibrant, natural Nigerian Pidgin with authentic cadence and reassuring phrasing "
+    "(e.g., 'How body, my person! No let this sickness shake your heart at all-o. Make you listen well-well: "
+    "this evening before sunset, take fresh neem water spray both top and under the leaf. Your farm go dey alright!').\n"
+    "   - 'hausa': Respectful, natural northern Nigerian Hausa for farming communities (e.g. 'Sannu abokina manomi! Kada ka damu...').\n"
+    "   - 'yoruba': Warm, respectful southwestern Nigerian Yoruba (e.g. 'Ẹ ku ojumo ore mi agbẹ! Ẹ ma se aibalẹ rara...').\n"
+    "   - 'english': Warm Nigerian / West African English with clear, respectful cadence and local farming terminology.\n"
+    "2. spoken_reply: 2-3 short, rhythmic sentences meant to be SPOKEN aloud as a voice note. "
+    "Do NOT include Latin botanical names, parentheses, or complex acronyms in spoken_reply. "
+    "Give a warm greeting, validate the farmer, name the issue simply, and give one concrete action they can take today.\n"
     "3. step_by_step_instructions: 3-5 numbered, concrete steps using local units (handfuls, 5-litre paint bucket, "
     "borehole water, local black soap as a sticker, sunset spraying).\n"
     "4. preventative_cultural_practices: 3-4 proactive habits (crop roguing, ash water tool cleaning, spacing).\n"
@@ -71,28 +74,30 @@ ADVISOR_SYSTEM = (
 
 def _mock_advisory(query: str, lang: Lang, ctx: Optional[dict]) -> AdvisoryResponse:
     crop = (ctx or {}).get("crop_name", "cassava").capitalize()
-    disease = (ctx or {}).get("disease_detected", "Cassava Mosaic Disease")
+    raw_disease = (ctx or {}).get("disease_detected", "Cassava Mosaic Disease")
+    # Clean Latin names/parentheses for spoken naturalness
+    clean_disease = re.sub(r"\([^)]*\)", "", raw_disease).strip()
 
     spoken_replies = {
         "pidgin": (
-            f"How body my friend! For this your {crop} wey {disease} dey disturb, "
-            f"no shake at all. You fit prepare sweet neem leaf medicine this evening, "
+            f"How body, my person! For this your {crop}, wey {clean_disease} dey disturb am, "
+            f"no shake at all-o! Make you listen well-well: you fit prepare sweet neem leaf medicine this evening, "
             f"and your farm go bounce back strong!"
         ),
         "hausa": (
-            f"Sannu abokina manomi! Wannan cutar {crop} wato {disease}, "
+            f"Sannu abokina manomi! Wannan cutar {crop} wato {clean_disease}, "
             f"ana iya magance ta da ruwan ganyen neem a yau. "
             f"Kada ka damu ko kadan, amfanin gonarka zai dawo da karfi."
         ),
         "yoruba": (
-            f"Ẹ ku ojumo ore mi agbẹ! Fun arun {crop} yi ({disease}), "
+            f"Ẹ ku ojumo ore mi agbẹ! Fun arun {crop} yi ({clean_disease}), "
             f"e ma se aibalẹ rara. Ẹ le se omi ewe neem ni irole oni, "
             f"oko yin yio si tun gberu si."
         ),
         "english": (
-            f"Good day my friend! Regarding this {crop} affected by {disease}, "
+            f"Good day, my friend! Regarding your {crop} affected by {clean_disease}, "
             f"do not lose hope. You can prepare an organic neem spray today "
-            f"to protect your harvest and clear the infestation."
+            f"to protect your harvest and clear the infection."
         ),
     }
 
@@ -196,7 +201,7 @@ async def generate_advisory(
             {"role": "user", "content": user_msg},
         ],
         "temperature": 0.2,
-        "max_tokens": 1200,
+        "max_tokens": 2500,
         "response_format": {"type": "json_object"},
     }
 
@@ -212,7 +217,10 @@ async def generate_advisory(
                 resp = await client.post(META_API_URL, headers=headers, json=payload)
                 if resp.status_code == 200:
                     data = resp.json()
-                    content = data["choices"][0]["message"]["content"]
+                    choice = data["choices"][0]
+                    content = choice.get("message", {}).get("content") or ""
+                    if not content.strip():
+                        raise ValueError("Model returned empty content")
                     parsed = _extract_json(content)
                     parsed.setdefault("detected_language", lang)
                     return AdvisoryResponse(**parsed)

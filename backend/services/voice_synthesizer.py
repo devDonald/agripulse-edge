@@ -1,34 +1,82 @@
 """AgriPulse Edge: Voice Note Audio Synthesizer (TTS) for illiterate & low-literacy farmers.
 
 Converts local dialect extension guidance into audible voice notes
-for playback in Streamlit UI and transmission over WhatsApp.
+with authentic Nigerian English, Hausa, Yoruba, and Pidgin prosody.
 """
 import io
 import math
 import os
+import re
 import struct
+import unicodedata
 from typing import Optional
 
 
+def _tune_for_nigerian_speech(text: str, language: str) -> str:
+    """Pre-processes text to ensure natural West African / Nigerian speech prosody."""
+    t = text or ""
+    # Strip parenthetical technicalities (e.g. '(Puccinia sorghi)', '(CMD)', '(Spodoptera frugiperda)')
+    t = re.sub(r"\([^)]*\)", "", t)
+    # Expand common abbreviations
+    t = re.sub(r"\bCMD\b", "Cassava Mosaic", t)
+    t = re.sub(r"\bFAW\b", "Fall Armyworm", t)
+    t = re.sub(r"\bGLS\b", "Gray Leaf Spot", t)
+    # Spoken units
+    t = re.sub(r"(\d+)\s*L\b", r"\1 litres", t)
+    t = re.sub(r"(\d+)\s*kg\b", r"\1 kilograms", t)
+    t = re.sub(r"(\d+)m\s*[xX]\s*(\d+)m", r"\1 metre by \2 metre", t)
+    t = re.sub(r"(\d+)\s*cm\b", r"\1 centimetres", t)
+    t = re.sub(r"(\d+)\s*ml\b", r"\1 millilitres", t)
+
+    # Cadence punctuation for Nigerian rhythm
+    if language in ("pidgin", "english"):
+        t = re.sub(r"\bHow body\b(?!\s*,)", "How body,", t, flags=re.IGNORECASE)
+        t = re.sub(r"\bNo shake\b(?!\s*,)", "No shake,", t, flags=re.IGNORECASE)
+        t = re.sub(r"\bNo worry\b(?!\s*,)", "No worry,", t, flags=re.IGNORECASE)
+        t = re.sub(r"\bOya\b(?!\s*,)", "Oya,", t, flags=re.IGNORECASE)
+        t = re.sub(r"\bAbeg\b(?!\s*,)", "Abeg,", t, flags=re.IGNORECASE)
+
+    # For Yoruba, normalize tone marks into phonetic characters so TTS articulates smoothly
+    if language == "yoruba":
+        t = unicodedata.normalize("NFKD", t)
+        t = "".join(c for c in t if not unicodedata.combining(c))
+
+    # Clean multiple spaces/punctuation
+    t = re.sub(r"\s+", " ", t)
+    t = re.sub(r",\s*,+", ",", t)
+    return t.strip()
+
+
 def synthesize_spoken_audio(text: str, language: str = "en") -> bytes:
-    """Synthesizes speech audio bytes using gTTS with instant synthetic WAV fallback."""
+    """Synthesizes speech audio bytes using Nigerian Google TTS with synthetic WAV fallback."""
     if os.getenv("MOCK_MODE", "false").lower() in ("1", "true", "yes"):
         return _generate_fallback_audio_wav()
 
-    lang_map = {
-        "english": "en",
-        "pidgin": "en",  # English phonetics with West African prosody
-        "hausa": "ha",
-        "yoruba": "yo",
-    }
-    target_lang = lang_map.get(language.lower(), "en")
+    lang_lower = (language or "en").lower().strip()
+    # Hausa has native gTTS support ('ha')
+    # English, Pidgin, and Yoruba (phonetically normalized) use Nigerian English ('en' with tld='com.ng')
+    target_lang = "ha" if lang_lower in ("hausa", "ha") else "en"
+
+    clean_text = _tune_for_nigerian_speech(text[:450], lang_lower)
 
     try:
         from gtts import gTTS
 
         buf = io.BytesIO()
-        # tld='co.za' or 'com.ng' gives an African English inflection
-        tts = gTTS(text=text[:350], lang=target_lang, slow=False, tld="co.za" if target_lang == "en" else "com")
+        # Primary: Official Google Nigeria domain (translate.google.com.ng) gives authentic Nigerian inflection
+        tts = gTTS(text=clean_text, lang=target_lang, slow=False, tld="com.ng")
+        tts.write_to_fp(buf)
+        buf.seek(0)
+        return buf.getvalue()
+    except Exception:
+        pass
+
+    # Secondary fallback: gTTS generic domain
+    try:
+        from gtts import gTTS
+
+        buf = io.BytesIO()
+        tts = gTTS(text=clean_text, lang=target_lang, slow=False, tld="com")
         tts.write_to_fp(buf)
         buf.seek(0)
         return buf.getvalue()
