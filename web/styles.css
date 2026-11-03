@@ -13,3 +13,174 @@
 .symptoms-list{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 16px}
 .symptom-tag{background:#edf4ec;border:1px solid #d2e2d0;color:#234832;padding:5px 9px;border-radius:5px;font-size:11px;font-weight:500}
 
+
+/* Admin vs Public Mode visibility */
+body:not(.admin-mode) .admin-only {
+  display: none !important;
+}
+body.admin-mode .admin-only {
+  display: block;
+}
+body.admin-mode .side-link.admin-only {
+  display: flex !important;
+}
+body.admin-mode .admin-divider {
+  display: block !important;
+}
+
+/* Sidebar Admin Divider */
+.admin-divider {
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  color: #799187;
+  padding: 18px 12px 6px;
+  font-weight: 700;
+  text-transform: uppercase;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  margin-top: 14px;
+}
+
+/* Role switch button in sidebar footer */
+.role-switch-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  color: #d1dfd8;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: 'DM Sans', sans-serif;
+  cursor: pointer;
+  margin-bottom: 16px;
+  transition: all 0.2s;
+}
+.role-switch-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: white;
+}
+body.admin-mode .role-switch-btn {
+  background: rgba(200, 243, 93, 0.12);
+  border-color: rgba(200, 243, 93, 0.35);
+  color: var(--lime);
+}
+
+/* Role Pills in Workspace Header */
+.role-pill {
+  padding: 5px 11px;
+  border-radius: 14px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+.role-pill.farmer {
+  background: #e6f4ea;
+  color: #137333;
+  border: 1px solid #ceead6;
+}
+.role-pill.admin {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fcd34d;
+}
+.role-pill-btn {
+  padding: 6px 13px;
+  background: #123d2d;
+  color: white;
+  border: 0;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.role-pill-btn:hover {
+  opacity: 0.88;
+}
+body.admin-mode .role-pill-btn {
+  background: #2b4538;
+  color: #c8f35d;
+}
+
+/* Admin View Headers */
+.admin-view-header {
+  margin-bottom: 24px;
+}
+.admin-badge {
+  display: inline-block;
+  background: #123d2d;
+  color: var(--lime);
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+  margin-bottom: 8px;
+}
+.admin-view-header h2 {
+  font-size: 28px;
+  margin: 6px 0;
+  letter-spacing: -1px;
+}
+.admin-view-header p {
+  color: var(--muted);
+  font-size: 14px;
+  margin: 0;
+}
+
+/* Admin Health Cards Grid */
+.admin-health-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.admin-card {
+  background: white;
+  border: 1px solid var(--line);
+  padding: 20px;
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+}
+.admin-card small {
+  font-size: 10px;
+  letter-spacing: 1px;
+  font-weight: 700;
+  color: #77857e;
+}
+.admin-card b {
+  font-size: 22px;
+  font-family: Manrope, sans-serif;
+  color: var(--ink);
+}
+.admin-card span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.status-active {
+  color: #15803d !important;
+}
+.status-warn {
+  color: #b45309 !important;
+}
+
+/* Admin Actions Bar */
+.admin-actions-bar {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.admin-data-header {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  color: #4b6356;
+  margin: 20px auto 8px;
+  max-width: 720px;
+  text-align: left;
+}

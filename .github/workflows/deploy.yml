@@ -36,6 +36,8 @@ jobs:
         run: |
           python -m pytest tests/ -v
           python scripts/test_stability_matrix.py
+          python scripts/test_mobile_sync.py
+          python scripts/test_dial_transport.py
 
   deploy:
     name: Deploy to Graviton EC2 Production
