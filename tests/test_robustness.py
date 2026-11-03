@@ -56,6 +56,26 @@ def test_diagnose_user_maize_rust():
     assert len(data["organic_remedies"]) == 3
 
 
+def test_diagnose_user_cassava_mosaic():
+    """Regression: user's real field photo of cassava leaf must diagnose as cassava / CMD (never maize rust)."""
+    path = os.path.join(SAMPLE_DIR, "user_cassava_mosaic.jpg")
+    with open(path, "rb") as f:
+        res = client.post("/api/v1/diagnose", files={"file": ("leaf.jpg", f, "image/jpeg")})
+    assert res.status_code == 200
+    data = res.json()
+    assert data["crop_name"].lower() == "cassava", f"got {data['crop_name']}"
+    assert "mosaic" in data["disease_detected"].lower(), data["disease_detected"]
+    assert len(data["organic_remedies"]) == 3
+
+    # Also verify edge offline endpoint matches
+    with open(path, "rb") as f:
+        edge_res = client.post("/api/v1/diagnose-edge", files={"file": ("leaf.jpg", f, "image/jpeg")})
+    assert edge_res.status_code == 200
+    edge_data = edge_res.json()
+    assert edge_data["crop_name"].lower() == "cassava", f"edge got {edge_data['crop_name']}"
+    assert "mosaic" in edge_data["disease_detected"].lower(), edge_data["disease_detected"]
+
+
 NEW_CROPS = [
     ("yam_anthracnose.jpg", "yam", None),
     ("cowpea_aphids.jpg", "cowpea", None),

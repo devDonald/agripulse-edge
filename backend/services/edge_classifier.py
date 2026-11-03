@@ -329,12 +329,22 @@ def classify_leaf_on_device(image_bytes: bytes, expected_crop: str = None) -> Ed
     # shape_known=False when the mask covers ~the whole frame (tight macro crop):
     # then the outline is the photo rectangle and elongation/lobes are meaningless.
     shape_known = extent <= 0.95 and leaf_ratio < 0.90
+    # Field cassava signature: broad palmate canopy or mosaic mottling with field
+    # soil/foliage background (high frame fill or field necrosis with low elongation & no parallel veins).
+    # Must NOT be intercepted by the maize rust speckle rule below.
+    is_field_cassava = (
+        (chlor > 0.35 and (necr >= 0.07 or leaf_ratio >= 0.85))
+        or (necr >= 0.18 and compact > 20.0 and elong < 2.0)
+    ) and elong < 2.0 and not pvein
+
+    if is_field_cassava:
+        auto_crop = "cassava"
     # Dense pustule speckle (rust) on a green blade is a maize signature even
     # when overlapping blades merge into a blobby mask (user's rust photo).
     # Primary cue is boundary complexity: hundreds of pustules blow compactness
     # to 20-180x smooth-leaf values, invariant to dim/blur/downscale light.
     # Spot count is the secondary confirmation (merges under blur).
-    if spots >= 400 and chlor < 0.50:
+    elif spots >= 400 and chlor < 0.50:
         auto_crop = "maize"
     elif compact > 20.0 and dmg >= 12:
         auto_crop = "maize"
@@ -529,7 +539,7 @@ def classify_leaf_on_device(image_bytes: bytes, expected_crop: str = None) -> Ed
         )
     # ── CASSAVA branch ──
     if crop == "cassava":
-        if chlor > 0.25 or (chlor >= necr and dmg > 15):
+        if chlor > 0.25 or (chlor >= necr and dmg > 15) or (dmg > 45 and compact > 10.0):
             return EdgeClassification(
                 is_leaf=True,
                 crop_name="cassava",
