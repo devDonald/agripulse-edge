@@ -3,7 +3,7 @@
 Showcases:
 1. 🔬 Visual Crop Clinic (Llama 3.2 90B Vision + SAM 2 Lesion Segmentation)
 2. ⚡ ExecuTorch On-Device Edge Telemetry (Zero-Data / Airplane Mode)
-3. 🎙️ Multilingual Voice Copilot with Audio Playback (Pidgin, Hausa, Yoruba, English)
+3. 🎙️ Multilingual Voice Copilot with Audio Playback (English, Pidgin, Hausa, Yoruba, Igbo)
 4. 💬 WhatsApp Business Cloud API Field Simulator
 """
 import base64
@@ -216,7 +216,7 @@ st.markdown(
     <div class="hero">
       <h1>AgriPulse Edge <span class="accent">🌿</span></h1>
       <p>Offline-first AI crop clinic & multilingual voice copilot for West African smallholders —
-      Llama 3.2 Vision + SAM 2 + ExecuTorch, speaking Pidgin, Hausa & Yoruba.</p>
+      Llama 3.2 Vision + SAM 2 + ExecuTorch, speaking English, Pidgin, Hausa, Yoruba & Igbo.</p>
       <div class="hero-badges">
         {mode_badge}
         <span class="hbadge">Meta Llama 3.2 Vision</span>
@@ -285,7 +285,7 @@ for key, default in {
     "advisory": None,
     "audio_bytes": None,
     "wa_chat": [
-        {"sender": "bot", "text": "🌿 *Welcome to AgriPulse!* Send a photo of your leaf or ask a question in Pidgin, Hausa, or Yoruba."}
+        {"sender": "bot", "text": "🌿 *Welcome to AgriPulse!* Send a photo of your leaf or ask a question in English, Pidgin, Hausa, Yoruba, or Igbo."}
     ],
 }.items():
     st.session_state.setdefault(key, default)
@@ -579,26 +579,27 @@ with tab_clinic:
 # TAB 2: MULTILINGUAL VOICE COPILOT
 # =============================================================================
 with tab_voice:
-    st.markdown('<div class="sec-title">🎙️ Multilingual Voice Copilot</div><div class="sec-sub">No English manual needed — advice in Pidgin, Hausa & Yoruba, with voice-note playback.</div>',
+    st.markdown('<div class="sec-title">🎙️ Multilingual Voice Copilot</div><div class="sec-sub">No English manual needed — advice in English, Pidgin, Hausa, Yoruba & Igbo, with voice-note playback.</div>',
                 unsafe_allow_html=True)
     st.markdown('<div class="card"><h3>🌍 Pick a language</h3>', unsafe_allow_html=True)
     lang_choice = st.radio(
         "Choose Language / Dialect:",
-        ["Nigerian Pidgin (Default)", "Hausa", "Yoruba", "English"],
+        ["English", "Pidgin", "Hausa", "Yoruba", "Igbo"],
         horizontal=True,
         label_visibility="collapsed",
     )
     lang_code = {
-        "Nigerian Pidgin (Default)": "pidgin",
+        "English": "english",
+        "Pidgin": "pidgin",
         "Hausa": "hausa",
         "Yoruba": "yoruba",
-        "English": "english",
+        "Igbo": "igbo",
     }[lang_choice]
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown('<div class="card"><h3>⚡ One-tap farmer questions</h3><div class="hint">Tap to fill the question box below.</div>',
                 unsafe_allow_html=True)
-    quick_cols = st.columns(3)
+    quick_cols = st.columns(4)
     quick_q = None
     with quick_cols[0]:
         if st.button("🇳🇬 “How I go prepare neem spray?”", use_container_width=True):
@@ -609,6 +610,9 @@ with tab_voice:
     with quick_cols[2]:
         if st.button("🇳🇬 “Bawo ni mo se lo ewe neem?”", use_container_width=True):
             quick_q = "Bawo ni mo se le lo ewe neem fun oko mi?"
+    with quick_cols[3]:
+        if st.button("🇳🇬 “Kedu ka m ga-esi kwadebe neem?”", use_container_width=True):
+            quick_q = "Kedu ka m ga-esi kwadebe ogwu neem maka ugbo m?"
 
     custom_q = st.text_input("💬 Farmer's question:", value=quick_q or "",
                              placeholder="e.g. My cassava leaf get yellow spots, wetin I fit do?")
@@ -668,7 +672,7 @@ with tab_whatsapp:
     wa_col, phone_col = st.columns([1, 1], gap="large")
 
     with wa_col:
-        st.markdown('<div class="card"><h3>📲 Send as farmer</h3><div class="hint">Type in Pidgin, Hausa or Yoruba — the bot replies in kind.</div>',
+        st.markdown('<div class="card"><h3>📲 Send as farmer</h3><div class="hint">Type in English, Pidgin, Hausa, Yoruba or Igbo — the bot replies in kind.</div>',
                     unsafe_allow_html=True)
         wa_input = st.text_input("Message to AgriPulse bot:", placeholder="E.g., Wetin I fit use kill caterpillar for maize?")
         send_wa_btn = st.button("📲 Send WhatsApp Message", use_container_width=True, type="primary")

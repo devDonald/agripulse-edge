@@ -394,7 +394,7 @@ async def segment(request: Request, file: UploadFile = File(..., description="Cr
 @app.post("/api/v1/voice-advisory", response_model=AdvisoryResponse)
 @limiter.limit("60/minute")
 async def voice_advisory(request: Request, req: VoiceAdvisoryRequest):
-    """Multilingual voice/text advisory in Nigerian Pidgin, Hausa, Yoruba, or simple English."""
+    """Multilingual voice/text advisory in English, Pidgin, Hausa, Yoruba, or Igbo."""
     try:
         result = await generate_advisory(req.query, req.language, req.diagnosis_context,
                                          model_id=req.model_id, use_live=req.use_live)
@@ -528,7 +528,7 @@ def whatsapp_status():
         "webhook_url": "https://agripulse.zentreeca.org/api/v1/whatsapp/webhook",
         "cloud_api_version": "v21.0",
         "transports_supported": ["text", "image", "audio_voice_note"],
-        "dialects_supported": ["pidgin", "hausa", "yoruba", "english"],
+        "dialects_supported": ["english", "pidgin", "hausa", "yoruba", "igbo"],
     })
 
 

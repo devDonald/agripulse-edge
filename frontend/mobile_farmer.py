@@ -63,10 +63,10 @@ except Exception:
 if "f_diag" not in st.session_state:
     st.session_state.update(f_diag=None, f_adv=None, f_audio=None, f_img=None)
 
-lang = st.radio("Language", ["🇳🇬 Pidgin", "🇳🇬 Hausa", "🇳🇬 Yoruba", "🇬🇧 English"],
+lang = st.radio("Language", ["🇬🇧 English", "🇳🇬 Pidgin", "🇳🇬 Hausa", "🇳🇬 Yoruba", "🇳🇬 Igbo"],
                 horizontal=True, label_visibility="collapsed")
-lang_code = {"🇳🇬 Pidgin": "pidgin", "🇳🇬 Hausa": "hausa",
-             "🇳🇬 Yoruba": "yoruba", "🇬🇧 English": "english"}[lang]
+lang_code = {"🇬🇧 English": "english", "🇳🇬 Pidgin": "pidgin", "🇳🇬 Hausa": "hausa",
+             "🇳🇬 Yoruba": "yoruba", "🇳🇬 Igbo": "igbo"}[lang]
 
 st.markdown("### 1️⃣ Snap / upload leaf")
 photo = st.file_uploader("Take photo or upload", type=["jpg", "jpeg", "png", "webp"],

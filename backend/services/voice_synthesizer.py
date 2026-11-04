@@ -1,7 +1,7 @@
 """AgriPulse Edge: Voice Note Audio Synthesizer (TTS) for illiterate & low-literacy farmers.
 
 Converts local dialect extension guidance into audible voice notes
-with authentic Nigerian English, Hausa, Yoruba, and Pidgin prosody.
+with authentic Nigerian English, Pidgin, Hausa, Yoruba, and Igbo prosody.
 """
 import io
 import math
@@ -36,8 +36,14 @@ def _tune_for_nigerian_speech(text: str, language: str) -> str:
         t = re.sub(r"\bOya\b(?!\s*,)", "Oya,", t, flags=re.IGNORECASE)
         t = re.sub(r"\bAbeg\b(?!\s*,)", "Abeg,", t, flags=re.IGNORECASE)
 
-    # For Yoruba, normalize tone marks into phonetic characters so TTS articulates smoothly
-    if language == "yoruba":
+    if language == "igbo":
+        t = re.sub(r"\bNnoo\b(?!\s*,)", "Nnoo,", t, flags=re.IGNORECASE)
+        t = re.sub(r"\bNnọọ\b(?!\s*,)", "Nnọọ,", t, flags=re.IGNORECASE)
+        t = re.sub(r"\bKedu\b(?!\s*,)", "Kedu,", t, flags=re.IGNORECASE)
+        t = re.sub(r"\bDaalu\b(?!\s*,)", "Daalu,", t, flags=re.IGNORECASE)
+
+    # For Yoruba and Igbo, normalize tone marks into phonetic characters so TTS articulates smoothly
+    if language in ("yoruba", "igbo"):
         t = unicodedata.normalize("NFKD", t)
         t = "".join(c for c in t if not unicodedata.combining(c))
 

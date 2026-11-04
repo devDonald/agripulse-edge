@@ -29,6 +29,8 @@ _processed_messages: Dict[str, float] = {}
 
 def _message_language(text: str) -> str:
     low = (text or "").lower()
+    if re.search(r"\b(igbo|ibo|nnọọ|nnoo|kedu|ugbo|akwukwo|akwụkwọ|ọrịa|oria|ogwu|ọgwụ|daalu)\b", low):
+        return "igbo"
     if re.search(r"\b(hausa|sannu|yaya|ganye|magani)\b", low):
         return "hausa"
     if re.search(r"\b(yoruba|bawo|ewe|ọ|ẹ|à|ṣ)\b", low):
@@ -265,6 +267,13 @@ async def process_incoming_whatsapp_payload(payload: Dict[str, Any]) -> Dict[str
                         "Ẹ ya aworan ewe to n se aisan (Gbaguda, Agbado, Isu, Tomato) ki ẹ fi ranṣẹ si mi.\n\n"
                         "Ma wo aisan na, ma wọn iye ibajẹ to wa lori ewe, ma si fun yin ni ogun ibilẹ ti ẹ le se loni!\n\n"
                         "📸 *Ẹ fi aworan ewe ranṣẹ ni bayi!*"
+                    ),
+                    "igbo": (
+                        "🌿 *AgriPulse Farm Doctor* 🌿\n\n"
+                        "Nnọọ nwanne m onye ọrụ ugbo! Abụ m dọkịta ugbo gị nke oge a. "
+                        "Seta foto doro anya nke akwụkwọ ihe ubi gị na-arịa ọrịa (Akpụ, Ọka, Ji, Tọmatọ) zitere m.\n\n"
+                        "Aga m enyocha ọrịa ahụ, tụọ ogo mmebi ya, ma nye gị ọgwụ ọdịnala dị ọnụ ala ị nwere ike ịkwadebe taa!\n\n"
+                        "📸 *Zite foto akwụkwọ ugbu a ka anyị malite!*"
                     ),
                     "english": (
                         "🌿 *AgriPulse Farm Doctor* 🌿\n\n"

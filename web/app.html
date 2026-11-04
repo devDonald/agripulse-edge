@@ -147,10 +147,11 @@
             <label>
               <span>Advice language</span>
               <select id="language">
-                <option value="pidgin">Nigerian Pidgin</option>
+                <option value="english">English</option>
+                <option value="pidgin" selected>Pidgin</option>
                 <option value="hausa">Hausa</option>
                 <option value="yoruba">Yoruba</option>
-                <option value="english">Simple English</option>
+                <option value="igbo">Igbo</option>
               </select>
             </label>
           </div>
@@ -159,7 +160,7 @@
             <span>Analyse crop leaf</span>
             <b>→</b>
           </button>
-          <p class="api-note" id="api-note">Ready to scan · Voice guidance available in 4 languages</p>
+          <p class="api-note" id="api-note">Ready to scan · Voice guidance available in 5 languages</p>
         </div>
 
         <aside class="process-panel">
@@ -322,9 +323,11 @@
           <div class="sim-quick-actions">
             <span class="sim-label">Quick Test Scenarios:</span>
             <div class="sim-chips">
-              <button type="button" class="sim-chip" data-type="text" data-text="Hello doctor, how to use AgriPulse?">👋 Greeting / Help</button>
+              <button type="button" class="sim-chip" data-type="text" data-text="Hello doctor, how to use AgriPulse?">👋 English Greeting</button>
               <button type="button" class="sim-chip" data-type="text" data-text="How body, my cassava leaves get yellow spots, wetin I fit do?">🍃 Pidgin Leaf Query</button>
               <button type="button" class="sim-chip" data-type="text" data-text="Sannu, amfanin gona na yana bushewa, me zan yi?">🌾 Hausa Leaf Query</button>
+              <button type="button" class="sim-chip" data-type="text" data-text="Bawo ni, ewe gbaguda mi n se aisan, ki ni mo le se?">🌱 Yoruba Leaf Query</button>
+              <button type="button" class="sim-chip" data-type="text" data-text="Nnọọ, akwụkwọ akpụ m na-acha odo odo, gịnị ka m ga-eme?">🌿 Igbo Leaf Query</button>
               <button type="button" class="sim-chip" data-type="image" data-sample="cassava_mosaic.jpg" data-caption="Doctor look this my cassava leaf">📸 Send Cassava Mosaic Photo</button>
               <button type="button" class="sim-chip" data-type="image" data-sample="maize_fall_armyworm.jpg" data-caption="Doctor worm dey chop my maize">🌽 Send Maize Armyworm Photo</button>
               <button type="button" class="sim-chip" data-type="image" data-sample="user_maize_rust.jpg" data-caption="Doctor my corn leaves get brown rust spots">🌽 Send Maize Rust Photo</button>
@@ -366,7 +369,7 @@
                 <div class="msg-author">AgriPulse Farm Doctor</div>
                 <div class="msg-text">
                   🌿 <b>Welcome to AgriPulse Farm Doctor!</b><br><br>
-                  Send a clear photo of any sick crop leaf, or ask a question in <b>Pidgin, Hausa, Yoruba, or English</b>. I will inspect the leaf, measure damage with SAM, and send you step-by-step organic remedies with a spoken voice note!
+                  Send a clear photo of any sick crop leaf, or ask a question in <b>English, Pidgin, Hausa, Yoruba, or Igbo</b>. I will inspect the leaf, measure damage with SAM, and send you step-by-step organic remedies with a spoken voice note!
                 </div>
                 <span class="msg-time">08:00 ✓✓</span>
               </div>

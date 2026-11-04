@@ -223,6 +223,32 @@ def test_multilingual_voice_advisory_yoruba():
     assert data["detected_language"] == "yoruba"
 
 
+def test_multilingual_voice_advisory_igbo():
+    req = {
+        "query": "Kedu ka m ga-esi kwadebe ogwu neem maka ugbo m?",
+        "language": "igbo",
+        "diagnosis_context": {"crop_name": "cassava", "disease_detected": "Cassava Mosaic"},
+    }
+    res = client.post("/api/v1/voice-advisory", json=req)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["detected_language"] == "igbo"
+    assert "nnọọ" in data["spoken_reply"].lower() or "ugbo" in data["spoken_reply"].lower()
+    assert len(data["step_by_step_instructions"]) >= 3
+
+
+def test_multilingual_voice_advisory_english():
+    req = {
+        "query": "How do I prepare neem spray for my cassava crop?",
+        "language": "english",
+        "diagnosis_context": {"crop_name": "cassava", "disease_detected": "Cassava Mosaic"},
+    }
+    res = client.post("/api/v1/voice-advisory", json=req)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["detected_language"] == "english"
+
+
 def test_whatsapp_webhook_verification():
     """Tests Meta Webhook challenge verification handshake."""
     params = {

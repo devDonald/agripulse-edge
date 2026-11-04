@@ -23,7 +23,7 @@ META_MODEL = os.getenv("META_MODEL", "muse-spark-1.3")
 META_TIMEOUT = float(os.getenv("META_TIMEOUT", "60"))
 MOCK_MODE = os.getenv("MOCK_MODE", "false").lower() in ("1", "true", "yes")
 
-Lang = Literal["pidgin", "hausa", "yoruba", "english"]
+Lang = Literal["english", "pidgin", "hausa", "yoruba", "igbo"]
 
 
 class AdvisoryResponse(BaseModel):
@@ -38,13 +38,15 @@ class AdvisoryResponse(BaseModel):
 
 
 def normalize_language(raw: str) -> Lang:
-    s = (raw or "pidgin").strip().lower()
+    s = (raw or "english").strip().lower()
     if s in ("pcm", "naija", "nigerian pidgin", "pidgin", "pidgin english", "broken"):
         return "pidgin"
     if s in ("ha", "hausa", "hausawa"):
         return "hausa"
     if s in ("yo", "yoruba", "yorùbá"):
         return "yoruba"
+    if s in ("ig", "igbo", "ibo", "ndi igbo", "asusu igbo"):
+        return "igbo"
     return "english"
 
 
@@ -53,12 +55,13 @@ ADVISOR_SYSTEM = (
     "speaking directly with smallholder farmers in Nigeria.\n\n"
     "COMMUNICATION RULES:\n"
     "1. Respond directly in the requested language/dialect with authentic Nigerian flavor, rhythm, and local expressions:\n"
+    "   - 'english': Warm Nigerian / West African English with clear, respectful cadence and local farming terminology.\n"
     "   - 'pidgin': Vibrant, natural Nigerian Pidgin with authentic cadence and reassuring phrasing "
     "(e.g., 'How body, my person! No let this sickness shake your heart at all-o. Make you listen well-well: "
     "this evening before sunset, take fresh neem water spray both top and under the leaf. Your farm go dey alright!').\n"
     "   - 'hausa': Respectful, natural northern Nigerian Hausa for farming communities (e.g. 'Sannu abokina manomi! Kada ka damu...').\n"
     "   - 'yoruba': Warm, respectful southwestern Nigerian Yoruba (e.g. 'Ẹ ku ojumo ore mi agbẹ! Ẹ ma se aibalẹ rara...').\n"
-    "   - 'english': Warm Nigerian / West African English with clear, respectful cadence and local farming terminology.\n"
+    "   - 'igbo': Respectful, warm southeastern Nigerian Igbo for farming communities (e.g. 'Nnọọ nwanne m onye ọrụ ugbo! Atụla egwu ma ọlị...').\n"
     "2. spoken_reply: 2-3 short, rhythmic sentences meant to be SPOKEN aloud as a voice note. "
     "Do NOT include Latin botanical names, parentheses, or complex acronyms in spoken_reply. "
     "Give a warm greeting, validate the farmer, name the issue simply, and give one concrete action they can take today.\n"
@@ -66,7 +69,7 @@ ADVISOR_SYSTEM = (
     "borehole water, local black soap as a sticker, sunset spraying).\n"
     "4. preventative_cultural_practices: 3-4 proactive habits (crop roguing, ash water tool cleaning, spacing).\n"
     "5. local_market_substitutes: 3-4 accessible substitutes (wood ash, chili-garlic, pawpaw leaf ferment).\n\n"
-    "Return STRICT JSON ONLY, no markdown. Schema: { 'detected_language': 'pidgin'|'hausa'|'yoruba'|'english', "
+    "Return STRICT JSON ONLY, no markdown. Schema: { 'detected_language': 'english'|'pidgin'|'hausa'|'yoruba'|'igbo', "
     "'spoken_reply': string, 'step_by_step_instructions': [string], "
     "'preventative_cultural_practices': [string], 'local_market_substitutes': [string] }"
 )
@@ -94,6 +97,11 @@ def _mock_advisory(query: str, lang: Lang, ctx: Optional[dict]) -> AdvisoryRespo
             f"e ma se aibalẹ rara. Ẹ le se omi ewe neem ni irole oni, "
             f"oko yin yio si tun gberu si."
         ),
+        "igbo": (
+            f"Nnọọ, nwanne m onye ọrụ ugbo! Maka ọrịa {crop} a ({clean_disease}), "
+            f"atụla egwu ma ọlị. Ị nwere ike ịkwadebe ọgwụ mmiri akwụkwọ neem n'anyasị taa, "
+            f"ugbo gị ga-adịkwa mma ọzọ!"
+        ),
         "english": (
             f"Good day, my friend! Regarding your {crop} affected by {clean_disease}, "
             f"do not lose hope. You can prepare an organic neem spray today "
@@ -119,6 +127,12 @@ def _mock_advisory(query: str, lang: Lang, ctx: Optional[dict]) -> AdvisoryRespo
             "Gun un ninu odo, ki o si re sinu garawa omi lita marun fun odidi ojo kan.",
             "Se omi naa, fi ose dudu die si ki o le ba rọ mọ ara ewe.",
             "Fun sokiri si abe ati oke awon ewe ni irole nigbati oorun ba ti wọ.",
+        ],
+        "igbo": [
+            "Gbutu akwụkwọ neem (dogonyaro) abụọ jupụtara n'aka nke dị ọhụrụ.",
+            "Kpụọ ya nke ọma n'ime odu, wee tinye ya n'ime lita mmiri ise nke dị ọcha maka abalị dum.",
+            "Zacha mmiri ahụ n'ụtụtụ echi, tinye obere ncha ojii ka ọ nwee ike ịrapagide n'akwụkwọ.",
+            "Fesa ya n'okpuru na n'elu akwụkwọ niile n'anyasị mgbe anyanwụ dachara kwa ụbọchị anọ ọ bụla.",
         ],
         "english": [
             "Gather 2 large handfuls of fresh green neem leaves (Azadirachta indica).",
