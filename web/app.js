@@ -70,7 +70,7 @@ function setAdminMode(enable, syncUrl = false) {
 
   // If switched to public mode while on an admin-only view, redirect to clinic
   const currentView = $('.side-link.active')?.dataset.view;
-  if (!isAdminMode && ['command', 'history', 'models'].includes(currentView)) {
+  if (!isAdminMode && ['command', 'history', 'models', 'whatsapp'].includes(currentView)) {
     showView('clinic');
   }
 
@@ -93,7 +93,7 @@ function setAdminMode(enable, syncUrl = false) {
 
 function showView(name) {
   // If attempting to open admin view without admin mode, enable admin mode automatically
-  if (['command', 'history', 'models'].includes(name) && !isAdminMode) {
+  if (['command', 'history', 'models', 'whatsapp'].includes(name) && !isAdminMode) {
     setAdminMode(true, true);
   }
 
@@ -104,6 +104,7 @@ function showView(name) {
     clinic: 'Crop clinic',
     command: 'Command center',
     history: 'Field records',
+    whatsapp: 'WhatsApp Business Cloud API',
     models: 'System & model diagnostics',
   };
   $('#view-title').textContent = titles[name] || 'Crop clinic';
@@ -131,9 +132,9 @@ const urlParams = new URLSearchParams(location.search);
 const requestedMode = urlParams.get('mode') || urlParams.get('role');
 const savedRole = localStorage.getItem('agripulse_role');
 
-if (['admin', 'command', 'history', 'models', 'staff'].includes(requestedMode)) {
+if (['admin', 'command', 'history', 'models', 'staff', 'whatsapp'].includes(requestedMode)) {
   setAdminMode(true);
-  if (['command', 'history', 'models'].includes(requestedMode)) {
+  if (['command', 'history', 'models', 'whatsapp'].includes(requestedMode)) {
     showView(requestedMode);
   }
 } else if (savedRole === 'admin' && !requestedMode) {
@@ -515,3 +516,155 @@ async function loadBenchmarks() {
 $('#load-history')?.addEventListener('click', loadHistoryRecords);
 $('#load-models')?.addEventListener('click', loadModelCatalog);
 $('#load-benchmarks')?.addEventListener('click', loadBenchmarks);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Meta WhatsApp Business Cloud Channel Simulator
+// ─────────────────────────────────────────────────────────────────────────────
+
+$('#btn-open-wa')?.addEventListener('click', () => {
+  setAdminMode(true, true);
+  showView('whatsapp');
+  toast('Opened WhatsApp Business Cloud Channel Sandbox');
+});
+
+async function simulateWhatsAppMessage({ type, text, sample, caption }) {
+  const chatBox = $('#wa-chat-box');
+  if (!chatBox) return;
+
+  // 1. Append User bubble
+  const userBubble = document.createElement('div');
+  userBubble.className = 'msg-bubble user';
+  const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  let userContent = text || caption || 'Sent photo';
+  if (type === 'image') {
+    userContent = `📸 <i>[Sent leaf photo: ${sample || 'leaf'}]</i><br>${caption || ''}`;
+  }
+  userBubble.innerHTML = `
+    <div class="msg-text">${userContent}</div>
+    <span class="msg-time">${nowTime} ✓✓</span>
+  `;
+  chatBox.appendChild(userBubble);
+  chatBox.scrollTop = chatBox.scrollHeight;
+
+  // 2. Append Typing indicator
+  const typingBubble = document.createElement('div');
+  typingBubble.className = 'msg-bubble bot typing';
+  typingBubble.innerHTML = `<div class="msg-text"><em>AgriPulse Farm Doctor is typing…</em></div>`;
+  chatBox.appendChild(typingBubble);
+  chatBox.scrollTop = chatBox.scrollHeight;
+
+  // 3. Make simulation API call
+  try {
+    const payload = {
+      message_type: type,
+      text_body: text || caption,
+      sample_preset: sample || null,
+    };
+    const res = await fetch('/api/v1/whatsapp/simulate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error('WhatsApp simulation request failed');
+    const data = await res.json();
+
+    // Remove typing bubble
+    typingBubble.remove();
+
+    // 4. Append Bot reply bubble
+    const botBubble = document.createElement('div');
+    botBubble.className = 'msg-bubble bot';
+    const formattedReply = (data.reply || 'Message received.')
+      .replace(/\n/g, '<br>')
+      .replace(/\*([^*]+)\*/g, '<b>$1</b>');
+
+    let audioPlayerHtml = '';
+    if (data.spoken_reply) {
+      audioPlayerHtml = `
+        <div class="wa-audio-player">
+          <button type="button" class="wa-play-btn" data-spoken="${encodeURIComponent(data.spoken_reply)}" data-lang="${data.language || 'pidgin'}">▶ Play Voice Note (MP3)</button>
+        </div>
+      `;
+    }
+
+    botBubble.innerHTML = `
+      <div class="msg-author">AgriPulse Farm Doctor</div>
+      <div class="msg-text">${formattedReply}</div>
+      ${audioPlayerHtml}
+      <span class="msg-time">${nowTime}</span>
+    `;
+    chatBox.appendChild(botBubble);
+    chatBox.scrollTop = chatBox.scrollHeight;
+
+    // Wire audio button inside the bubble
+    const audioBtn = botBubble.querySelector('.wa-play-btn');
+    if (audioBtn) {
+      audioBtn.addEventListener('click', async () => {
+        const spoken = decodeURIComponent(audioBtn.dataset.spoken);
+        const lang = audioBtn.dataset.lang;
+        audioBtn.disabled = true;
+        audioBtn.textContent = '⏳ Loading audio…';
+        try {
+          const synthRes = await fetch('/api/v1/voice-synthesize', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: spoken.slice(0, 500), language: lang }),
+          });
+          if (!synthRes.ok) throw new Error('Voice fetch failed');
+          const blob = await synthRes.blob();
+          const audioUrl = URL.createObjectURL(blob);
+          const audio = new Audio(audioUrl);
+          audioBtn.textContent = '⏸ Playing voice note…';
+          audio.onended = () => {
+            audioBtn.textContent = '▶ Play Voice Note (MP3)';
+            audioBtn.disabled = false;
+          };
+          audio.onerror = () => {
+            audioBtn.textContent = '▶ Play Voice Note (MP3)';
+            audioBtn.disabled = false;
+          };
+          await audio.play();
+        } catch (e) {
+          audioBtn.textContent = '▶ Play Voice Note (MP3)';
+          audioBtn.disabled = false;
+          toast('Audio playback failed', true);
+        }
+      });
+    }
+
+    toast('WhatsApp event processed & synced to audit log');
+  } catch (err) {
+    typingBubble.remove();
+    const errBubble = document.createElement('div');
+    errBubble.className = 'msg-bubble bot error';
+    errBubble.innerHTML = `<div class="msg-text">⚠️ <i>Error processing message: ${err.message}</i></div>`;
+    chatBox.appendChild(errBubble);
+    chatBox.scrollTop = chatBox.scrollHeight;
+  }
+}
+
+$$('.sim-chip').forEach((chip) => {
+  chip.addEventListener('click', () => {
+    const type = chip.dataset.type;
+    const text = chip.dataset.text;
+    const sample = chip.dataset.sample;
+    const caption = chip.dataset.caption;
+    simulateWhatsAppMessage({ type, text, sample, caption });
+  });
+});
+
+$('#wa-send-btn')?.addEventListener('click', () => {
+  const input = $('#wa-custom-msg');
+  if (!input) return;
+  const val = input.value.trim();
+  if (!val) return;
+  input.value = '';
+  simulateWhatsAppMessage({ type: 'text', text: val });
+});
+
+$('#wa-custom-msg')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    $('#wa-send-btn')?.click();
+  }
+});

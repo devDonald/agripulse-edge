@@ -507,6 +507,94 @@ async def whatsapp_message_webhook(request: Request):
     return JSONResponse(content=result)
 
 
+class WhatsAppSimulateRequest(BaseModel):
+    from_phone: str = Field(default="+2348012345678", description="Simulated farmer phone")
+    message_type: str = Field(default="text", description="'text' or 'image'")
+    text_body: Optional[str] = Field(default="How body, my cassava get yellow spots")
+    sample_preset: Optional[str] = Field(default=None, description="Preset image file name in sample_data")
+    content_base64: Optional[str] = Field(default=None, description="Raw base64 image bytes")
+
+
+@app.get("/api/v1/whatsapp/status")
+def whatsapp_status():
+    """Reports configuration and readiness of the Meta WhatsApp Business Cloud API."""
+    from backend.services.whatsapp_service import WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_VERIFY_TOKEN
+    configured = bool(WHATSAPP_TOKEN and WHATSAPP_PHONE_NUMBER_ID)
+    return JSONResponse(content={
+        "configured": configured,
+        "mode": "live" if configured else "sandbox_simulator",
+        "phone_number_id": (WHATSAPP_PHONE_NUMBER_ID[:4] + "…" + WHATSAPP_PHONE_NUMBER_ID[-4:]) if WHATSAPP_PHONE_NUMBER_ID else "meta-sandbox-id",
+        "verify_token": WHATSAPP_VERIFY_TOKEN,
+        "webhook_url": "https://agripulse.zentreeca.org/api/v1/whatsapp/webhook",
+        "cloud_api_version": "v21.0",
+        "transports_supported": ["text", "image", "audio_voice_note"],
+        "dialects_supported": ["pidgin", "hausa", "yoruba", "english"],
+    })
+
+
+@app.post("/api/v1/whatsapp/simulate")
+async def whatsapp_simulate(req: WhatsAppSimulateRequest):
+    """Interactive testing endpoint for Web UI / Admin sandbox to test WhatsApp channel."""
+    import base64 as _b64
+    msg_id = f"wamid.sim.{int(time.time() * 1000)}"
+    if req.message_type == "image":
+        image_b64 = req.content_base64
+        if not image_b64 and req.sample_preset:
+            sample_path = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sample_data", req.sample_preset
+            )
+            if os.path.exists(sample_path):
+                with open(sample_path, "rb") as f:
+                    image_b64 = _b64.b64encode(f.read()).decode("utf-8")
+        payload = {
+            "object": "whatsapp_business_account",
+            "entry": [{
+                "id": "simulated-entry",
+                "changes": [{
+                    "value": {
+                        "messaging_product": "whatsapp",
+                        "metadata": {"display_phone_number": "2348012345678"},
+                        "messages": [{
+                            "from": req.from_phone,
+                            "id": msg_id,
+                            "timestamp": str(int(time.time())),
+                            "type": "image",
+                            "image": {
+                                "id": "sim-media-1",
+                                "caption": req.text_body or "",
+                                "content_base64": image_b64,
+                            },
+                        }],
+                    },
+                    "field": "messages",
+                }],
+            }],
+        }
+    else:
+        payload = {
+            "object": "whatsapp_business_account",
+            "entry": [{
+                "id": "simulated-entry",
+                "changes": [{
+                    "value": {
+                        "messaging_product": "whatsapp",
+                        "metadata": {"display_phone_number": "2348012345678"},
+                        "messages": [{
+                            "from": req.from_phone,
+                            "id": msg_id,
+                            "timestamp": str(int(time.time())),
+                            "type": "text",
+                            "text": {"body": req.text_body or "Hello"},
+                        }],
+                    },
+                    "field": "messages",
+                }],
+            }],
+        }
+    result = await process_incoming_whatsapp_payload(payload)
+    return JSONResponse(content=result)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Dial transport (getdial.ai): real phone number with WhatsApp + voice + SMS
 # ─────────────────────────────────────────────────────────────────────────────

@@ -183,10 +183,11 @@ async def _image_diagnosis_reply(image_bytes: bytes, caption: str = "") -> Dict[
                            "damage_percentage": damage,
                            "severity": severity},
     )
+    clean_disease = re.sub(r"\s*\([^)]*\)", "", diag.disease_detected).strip()
     reply_text = (
         f"🌿 *AgriPulse Crop Scan Complete* 🌿\n\n"
         f"• *Crop:* {diag.crop_name.title()}\n"
-        f"• *Detected Disease:* {diag.disease_detected}\n"
+        f"• *Detected Disease:* {clean_disease}\n"
         f"• *Confidence:* {int(diag.confidence * 100)}%\n"
         f"• *Measured Leaf Damage:* {damage}% (via SAM 2)\n"
         f"• *Severity:* {severity.title()}\n\n"
@@ -239,6 +240,46 @@ async def process_incoming_whatsapp_payload(payload: Dict[str, Any]) -> Dict[str
         if msg_type == "text":
             body = msg.get("text", {}).get("body", "")
             language = _message_language(body)
+            clean_body = (body or "").strip().lower()
+
+            # Friendly onboarding / greetings
+            if re.match(r"^(hi|hello|hey|sannu|bawo|kedu|howdy|help|start|good (morning|afternoon|evening)|menu)\b", clean_body):
+                welcome_msgs = {
+                    "pidgin": (
+                        "🌿 *AgriPulse Farm Doctor* 🌿\n\n"
+                        "How body my friend! I be your digital farm copilot. "
+                        "Snap and send me a clear photo of any sick crop leaf (Cassava, Maize, Yam, Tomato, etc.).\n\n"
+                        "I go scan am, tell you the exact sickness, measure the leaf damage with SAM, and give you cheap organic medicine wey you fit prepare today!\n\n"
+                        "📸 *Send leaf photo now make we start!*"
+                    ),
+                    "hausa": (
+                        "🌿 *AgriPulse Farm Doctor* 🌿\n\n"
+                        "Sannu abokina manomi! Ni ne likitan gonarka na zamani. "
+                        "Dauki hoto mai kyau na ganyen amfanin gonarka da ke da ciwo ka tura min.\n\n"
+                        "Zan bincika ciwon, in auna barnar da ya yi, kuma in ba ka maganin gida mai sauki a yau!\n\n"
+                        "📸 *Tura hoton ganye yanzu mu fara!*"
+                    ),
+                    "yoruba": (
+                        "🌿 *AgriPulse Farm Doctor* 🌿\n\n"
+                        "Ẹ ku ojumo ore mi agbẹ! Emi ni dokita oko yin. "
+                        "Ẹ ya aworan ewe to n se aisan (Gbaguda, Agbado, Isu, Tomato) ki ẹ fi ranṣẹ si mi.\n\n"
+                        "Ma wo aisan na, ma wọn iye ibajẹ to wa lori ewe, ma si fun yin ni ogun ibilẹ ti ẹ le se loni!\n\n"
+                        "📸 *Ẹ fi aworan ewe ranṣẹ ni bayi!*"
+                    ),
+                    "english": (
+                        "🌿 *AgriPulse Farm Doctor* 🌿\n\n"
+                        "Hello! I am your AI farm extension copilot. "
+                        "Send me a clear photo of any diseased crop leaf (Cassava, Maize, Yam, Tomato, etc.).\n\n"
+                        "I will instantly identify the disease, measure leaf damage with SAM, and provide step-by-step organic remedies and a voice note in your dialect.\n\n"
+                        "📸 *Send a leaf photo now to begin!*"
+                    ),
+                }
+                reply_text = welcome_msgs.get(language, welcome_msgs["pidgin"])
+                spoken_preview = reply_text.split("📸")[0].strip()
+                await send_whatsapp_text(sender_phone, reply_text)
+                await send_whatsapp_voice(sender_phone, synthesize_spoken_audio(spoken_preview, language))
+                return {"status": "replied", "type": "onboarding_welcome", "reply": reply_text, "language": language}
+
             advisory = await generate_advisory(user_query=body, language=language)
 
             reply_text = (

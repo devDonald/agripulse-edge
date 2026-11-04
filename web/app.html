@@ -23,6 +23,7 @@
       <div class="admin-divider admin-only">ADMIN TOOLS</div>
       <button class="side-link admin-only" data-view="command"><span>📊</span>Command center</button>
       <button class="side-link admin-only" data-view="history"><span>📋</span>Field records</button>
+      <button class="side-link admin-only" data-view="whatsapp"><span>💬</span>WhatsApp channel</button>
       <button class="side-link admin-only" data-view="models"><span>⚡</span>System & model status</button>
     </nav>
     
@@ -67,6 +68,18 @@
               <p>Upload a clear photo of one leaf. We'll identify the condition, show the affected spots, and give you step-by-step treatment guidance.</p>
             </div>
             <span class="secure">▣ Private</span>
+          </div>
+
+          <!-- WhatsApp Quick Channel Banner -->
+          <div class="whatsapp-banner">
+            <div class="wa-banner-icon">💬</div>
+            <div class="wa-banner-info">
+              <b>Prefer using WhatsApp?</b>
+              <p>Send a leaf photo directly to our WhatsApp Farm Doctor for voice notes & natural remedies in Pidgin, Hausa, or Yoruba.</p>
+            </div>
+            <button type="button" class="button button-wa" id="btn-open-wa">
+              <span>Open WhatsApp Doctor ↗</span>
+            </button>
           </div>
 
           <label class="drop-zone" id="drop-zone">
@@ -264,13 +277,106 @@
       <div class="admin-view-header">
         <span class="admin-badge">ADMIN CONSOLE</span>
         <h2>Field Diagnostic Records</h2>
-        <p>Audit trail of mobile and web diagnoses synchronized across farmer communities.</p>
+        <p>Audit trail of mobile, web, and WhatsApp diagnoses synchronized across farmer communities.</p>
       </div>
       <button class="button button-dark" id="load-history">Load synced records</button>
       <div id="history-list"></div>
     </section>
 
-    <!-- 4. SYSTEM & MODEL STATUS (Admin Only) -->
+    <!-- 4. WHATSAPP CONSOLE & SIMULATOR (Admin Only) -->
+    <section id="whatsapp" class="app-view">
+      <div class="admin-view-header">
+        <span class="admin-badge">META WHATSAPP INTEGRATION</span>
+        <h2>WhatsApp Business Cloud API Console</h2>
+        <p>Manage the Meta WhatsApp Business Cloud webhook, review live payload routing, and test the farmer conversational agent.</p>
+      </div>
+
+      <!-- Health & Config Cards -->
+      <div class="admin-health-cards">
+        <div class="admin-card">
+          <small>WEBHOOK ENDPOINT</small>
+          <b class="status-active">/api/v1/whatsapp/webhook</b>
+          <span>GET verification handshake + POST delivery</span>
+        </div>
+        <div class="admin-card">
+          <small>META GRAPH API VERSION</small>
+          <b class="status-active">v21.0 Cloud API</b>
+          <span>Direct Meta Cloud /messages & /media</span>
+        </div>
+        <div class="admin-card">
+          <small>DIALECT VOICE DISPATCH</small>
+          <b class="status-active">Nigerian Prosody (com.ng)</b>
+          <span>Auto-attaches MP3 voice notes to WhatsApp</span>
+        </div>
+      </div>
+
+      <!-- Interactive Simulator Grid -->
+      <div class="wa-sim-grid">
+        <div class="wa-sim-panel">
+          <div class="sim-panel-head">
+            <span class="kicker">INTERACTIVE CHANNEL TESTER</span>
+            <h3>Test the WhatsApp Farmer Experience</h3>
+            <p>Simulate inbound farmer WhatsApp messages or leaf photos to verify the automated diagnostic loop.</p>
+          </div>
+
+          <div class="sim-quick-actions">
+            <span class="sim-label">Quick Test Scenarios:</span>
+            <div class="sim-chips">
+              <button type="button" class="sim-chip" data-type="text" data-text="Hello doctor, how to use AgriPulse?">👋 Greeting / Help</button>
+              <button type="button" class="sim-chip" data-type="text" data-text="How body, my cassava leaves get yellow spots, wetin I fit do?">🍃 Pidgin Leaf Query</button>
+              <button type="button" class="sim-chip" data-type="text" data-text="Sannu, amfanin gona na yana bushewa, me zan yi?">🌾 Hausa Leaf Query</button>
+              <button type="button" class="sim-chip" data-type="image" data-sample="cassava_mosaic.jpg" data-caption="Doctor look this my cassava leaf">📸 Send Cassava Mosaic Photo</button>
+              <button type="button" class="sim-chip" data-type="image" data-sample="maize_fall_armyworm.jpg" data-caption="Doctor worm dey chop my maize">🌽 Send Maize Armyworm Photo</button>
+              <button type="button" class="sim-chip" data-type="image" data-sample="user_maize_rust.jpg" data-caption="Doctor my corn leaves get brown rust spots">🌽 Send Maize Rust Photo</button>
+            </div>
+          </div>
+
+          <div class="sim-custom-input">
+            <label for="wa-custom-msg"><span>Or type custom WhatsApp message:</span></label>
+            <div class="sim-input-box">
+              <input type="text" id="wa-custom-msg" placeholder="e.g. How body, my tomato get black spots...">
+              <button type="button" class="button button-dark" id="wa-send-btn">Send ↗</button>
+            </div>
+            <small class="sim-hint">Simulates inbound Meta Cloud API event delivered to <code>POST /api/v1/whatsapp/webhook</code></small>
+          </div>
+        </div>
+
+        <!-- Realistic WhatsApp Phone Mockup -->
+        <div class="phone-mockup">
+          <div class="phone-screen">
+            <div class="phone-top-bar">
+              <div class="phone-top-left">
+                <span class="phone-back">←</span>
+                <div class="phone-avatar">🌿</div>
+                <div class="phone-user-info">
+                  <b>AgriPulse Farm Doctor</b>
+                  <small>online</small>
+                </div>
+              </div>
+              <div class="phone-top-icons">
+                <span>📹</span>
+                <span>📞</span>
+                <span>⋮</span>
+              </div>
+            </div>
+            
+            <div class="chat-messages" id="wa-chat-box">
+              <div class="chat-date">TODAY</div>
+              <div class="msg-bubble bot">
+                <div class="msg-author">AgriPulse Farm Doctor</div>
+                <div class="msg-text">
+                  🌿 <b>Welcome to AgriPulse Farm Doctor!</b><br><br>
+                  Send a clear photo of any sick crop leaf, or ask a question in <b>Pidgin, Hausa, Yoruba, or English</b>. I will inspect the leaf, measure damage with SAM, and send you step-by-step organic remedies with a spoken voice note!
+                </div>
+                <span class="msg-time">08:00 ✓✓</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. SYSTEM & MODEL STATUS (Admin Only) -->
     <section id="models" class="app-view empty-view">
       <div class="admin-view-header">
         <span class="admin-badge">ADMIN CONSOLE</span>
