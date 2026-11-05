@@ -668,3 +668,31 @@ $('#wa-custom-msg')?.addEventListener('keydown', (e) => {
     $('#wa-send-btn')?.click();
   }
 });
+
+// App Download Modal Handlers
+const appModal = $('#app-download-modal');
+$('#open-app-modal')?.addEventListener('click', () => {
+  if (typeof appModal?.showModal === 'function') {
+    appModal.showModal();
+  } else {
+    appModal?.setAttribute('open', 'true');
+  }
+});
+
+$('#close-app-modal')?.addEventListener('click', () => {
+  if (typeof appModal?.close === 'function') {
+    appModal.close();
+  } else {
+    appModal?.removeAttribute('open');
+  }
+});
+
+appModal?.addEventListener('click', (e) => {
+  if (e.target === appModal) {
+    if (typeof appModal?.close === 'function') {
+      appModal.close();
+    } else {
+      appModal?.removeAttribute('open');
+    }
+  }
+});
