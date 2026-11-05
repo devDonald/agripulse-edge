@@ -237,18 +237,32 @@ $('#diagnose')?.addEventListener('click', async () => {
       damage_percentage: diagnosis.damage_percentage,
       severity: diagnosis.severity,
     };
+    const isNonLeaf =
+      (diagnosis.crop_name || '').toLowerCase() === 'unknown' ||
+      (diagnosis.crop_name || '').toLowerCase() === 'other' ||
+      (diagnosis.disease_detected || '').toLowerCase().includes('no crop leaf') ||
+      (diagnosis.disease_detected || '').toLowerCase().includes('no leaf');
+
+    const advQuery = isNonLeaf
+      ? 'No crop leaf was detected in this photo. How can I take a good photo of my crop leaf?'
+      : `What should I do about ${diagnosis.disease_detected} on my ${diagnosis.crop_name}?`;
+
     const advRes = await fetch('/api/v1/voice-advisory', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        query: `What should I do about ${diagnosis.disease_detected} on my ${diagnosis.crop_name}?`,
+        query: advQuery,
         language: $('#language')?.value || 'pidgin',
         diagnosis_context: ctx,
       }),
     });
     if (advRes.ok) advisory = await advRes.json();
     renderDiagnosis();
-    toast('Diagnosis complete. Treatment guidance is ready.');
+    if (isNonLeaf) {
+      toast('No crop leaf detected. Retake instructions prepared.');
+    } else {
+      toast('Diagnosis complete. Treatment guidance is ready.');
+    }
   } catch (err) {
     toast(err.message || 'Could not complete the diagnosis.', true);
   } finally {
@@ -262,14 +276,35 @@ function renderDiagnosis() {
   if (!diagnosis) return;
   resetAdviceAudio();
 
-  const cleanName = formatDiseaseName(diagnosis.disease_detected);
+  const rawCrop = (diagnosis.crop_name || 'crop').toLowerCase();
+  const diseaseText = (diagnosis.disease_detected || '').toLowerCase();
+  const isNonLeaf =
+    rawCrop === 'unknown' ||
+    rawCrop === 'other' ||
+    rawCrop === 'none' ||
+    rawCrop === 'not_a_leaf' ||
+    diseaseText.includes('no crop leaf') ||
+    diseaseText.includes('no leaf') ||
+    diseaseText.includes('not a crop') ||
+    diseaseText.includes('not a leaf');
+
+  const cleanName = isNonLeaf ? 'No Crop Leaf Detected' : formatDiseaseName(diagnosis.disease_detected);
   $('#result-disease').textContent = cleanName;
 
-  const rawCrop = (diagnosis.crop_name || 'crop').toLowerCase();
   const cropDisplayName = CROP_LABELS[rawCrop] || (diagnosis.crop_name || 'Crop');
   const conf = diagnosis.confidence || 0;
 
-  if (isAdminMode) {
+  if (isNonLeaf) {
+    $('#result-crop').textContent = 'Non-crop photo · Please photograph a real crop leaf for treatment guidance';
+    if ($('#result-tag')) {
+      $('#result-tag').textContent = 'Non-crop photo';
+    }
+    $('#result-damage').textContent = '0%';
+    $('#result-severity').textContent = 'NONE';
+    if ($('#remedies-kicker')) {
+      $('#remedies-kicker').textContent = 'RECOMMENDED ACTION (RETAKE GUIDANCE)';
+    }
+  } else if (isAdminMode) {
     const engine =
       diagnosis.segmentation?.method_used ||
       diagnosis.model_used ||
@@ -278,15 +313,22 @@ function renderDiagnosis() {
     if ($('#result-tag')) {
       $('#result-tag').textContent = diagnosis.segmentation?.method_used || 'SAM 2 Lesion Mask';
     }
+    $('#result-damage').textContent = `${Math.round(diagnosis.damage_percentage || 0)}%`;
+    $('#result-severity').textContent = (diagnosis.severity || 'mild').toUpperCase();
+    if ($('#remedies-kicker')) {
+      $('#remedies-kicker').textContent = 'RECOMMENDED RESPONSE (3 SIMPLE STEPS)';
+    }
   } else {
     $('#result-crop').textContent = `${cropDisplayName} · Symptoms identified · ${formatConfidence(conf)}`;
     if ($('#result-tag')) {
       $('#result-tag').textContent = 'Leaf damage analysis';
     }
+    $('#result-damage').textContent = `${Math.round(diagnosis.damage_percentage || 0)}%`;
+    $('#result-severity').textContent = (diagnosis.severity || 'mild').toUpperCase();
+    if ($('#remedies-kicker')) {
+      $('#remedies-kicker').textContent = 'RECOMMENDED RESPONSE (3 SIMPLE STEPS)';
+    }
   }
-
-  $('#result-damage').textContent = `${Math.round(diagnosis.damage_percentage || 0)}%`;
-  $('#result-severity').textContent = (diagnosis.severity || 'mild').toUpperCase();
 
   // Crop hint notice
   const hintEl = $('#result-hint-note');
@@ -445,8 +487,47 @@ $('#play-advice')?.addEventListener('click', async () => {
   }
 });
 
-$('#language')?.addEventListener('change', () => {
+$('#language')?.addEventListener('change', async () => {
   resetAdviceAudio();
+  if (diagnosis) {
+    const lang = $('#language')?.value || 'pidgin';
+    const rawCrop = (diagnosis.crop_name || 'crop').toLowerCase();
+    const diseaseText = (diagnosis.disease_detected || '').toLowerCase();
+    const isNonLeaf =
+      rawCrop === 'unknown' ||
+      rawCrop === 'other' ||
+      rawCrop === 'none' ||
+      rawCrop === 'not_a_leaf' ||
+      diseaseText.includes('no crop leaf') ||
+      diseaseText.includes('no leaf') ||
+      diseaseText.includes('not a crop') ||
+      diseaseText.includes('not a leaf');
+
+    const advQuery = isNonLeaf
+      ? 'No crop leaf was detected in this photo. How can I take a good photo of my crop leaf?'
+      : `What should I do about ${diagnosis.disease_detected} on my ${diagnosis.crop_name}?`;
+
+    try {
+      const advRes = await fetch('/api/v1/voice-advisory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: advQuery,
+          language: lang,
+          diagnosis_context: {
+            crop_name: diagnosis.crop_name,
+            disease_detected: diagnosis.disease_detected,
+            damage_percentage: diagnosis.damage_percentage,
+            severity: diagnosis.severity,
+          },
+        }),
+      });
+      if (advRes.ok) {
+        advisory = await advRes.json();
+        toast(`Language switched to ${lang.toUpperCase()}. Spoken advice updated.`);
+      }
+    } catch (_) {}
+  }
 });
 
 async function loadHistoryRecords() {

@@ -200,11 +200,13 @@ def _compute_image_features(img: Image.Image) -> dict:
     leaf_mask = is_bright_enough & (is_vegetative | is_diseased_foliage)
     leaf_pixel_count = int(leaf_mask.sum())
     leaf_ratio = leaf_pixel_count / float(total_pixels)
+    veg_ratio = float((is_bright_enough & is_vegetative).sum()) / float(total_pixels)
 
-    if leaf_ratio < 0.06:
+    # A genuine crop leaf must have adequate canopy coverage AND at least minimal vegetative chlorophyll presence
+    if leaf_ratio < 0.06 or veg_ratio < 0.015:
         # Rotated/diagonal blades can dip just under the gate: give obvious
         # vegetation one more chance before rejecting.
-        if leaf_ratio >= 0.035 and float(((G >= R * 0.9) & (H >= 25.0) & (H <= 95.0)).sum()) / float(total_pixels) > 0.03:
+        if leaf_ratio >= 0.035 and veg_ratio >= 0.015:
             pass
         else:
             return {

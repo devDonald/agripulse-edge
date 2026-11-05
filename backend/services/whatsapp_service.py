@@ -169,6 +169,38 @@ async def download_whatsapp_media(media_id: str) -> bytes:
 async def _image_diagnosis_reply(image_bytes: bytes, caption: str = "") -> Dict[str, Any]:
     """Runs the real pipeline on a WhatsApp photo: diagnose -> segment -> advisory."""
     diag = await diagnose_image(image_bytes, "image/jpeg")
+    is_non_leaf = (
+        diag.crop_name.lower() in ("unknown", "other", "not_a_leaf", "none")
+        or "no crop leaf" in diag.disease_detected.lower()
+        or "no leaf" in diag.disease_detected.lower()
+    )
+    if is_non_leaf:
+        damage = 0
+        severity = "low"
+        language = _message_language(caption)
+        advisory = await generate_advisory(
+            user_query=(caption.strip() or "No crop leaf was detected. How can I take a good photo of my crop leaf?"),
+            language=language,
+            diagnosis_context={"crop_name": "unknown",
+                               "disease_detected": "No crop leaf detected",
+                               "damage_percentage": 0,
+                               "severity": "low"},
+        )
+        reply_text = (
+            f"🌿 *AgriPulse Crop Scan* 🌿\n\n"
+            f"• *Status:* No crop leaf detected\n"
+            f"• *Detail:* Photo does not appear to show a crop leaf\n\n"
+            f"*{advisory.spoken_reply}*\n\n"
+            f"*How to take a clear crop photo:*\n"
+            + "\n".join(f"{i}. {s}" for i, s in enumerate(advisory.step_by_step_instructions, 1))
+            + f"\n\n*Helpful photo tips:*\n"
+            + "\n".join(f"• {item}" for item in advisory.preventative_cultural_practices[:3])
+        )
+        return {"reply_text": reply_text, "crop": "unknown",
+                "disease": "No crop leaf detected", "damage": 0,
+                "language": advisory.detected_language, "spoken_reply": advisory.spoken_reply,
+                "severity": "low"}
+
     try:
         seg = segment_leaf_damage(image_bytes)
         damage = int(round(float(seg.get("damage_percentage", diag.damage_percentage))))

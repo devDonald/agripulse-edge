@@ -346,6 +346,19 @@ async def diagnose(
     except RuntimeError as e:
         raise HTTPException(502, str(e))
 
+    # If the visual diagnosis identified a non-crop object (e.g. book, wall, hand),
+    # bypass lesion segmentation and maintain zero damage and retake alert.
+    is_non_leaf = (
+        result.crop_name.lower() in ("unknown", "other", "not_a_leaf", "none")
+        or "no crop leaf" in result.disease_detected.lower()
+        or "no leaf" in result.disease_detected.lower()
+    )
+    if is_non_leaf:
+        result.damage_percentage = 0
+        result.severity = Severity.low
+        result.needs_review = True
+        return JSONResponse(content=result.model_dump(mode="json"))
+
     # Perform lesion segmentation and fuse measured percentage
     try:
         seg = SegmentationResult(**segment_leaf_damage(raw))

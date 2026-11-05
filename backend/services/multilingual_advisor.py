@@ -68,7 +68,11 @@ ADVISOR_SYSTEM = (
     "3. step_by_step_instructions: 3-5 numbered, concrete steps using local units (handfuls, 5-litre paint bucket, "
     "borehole water, local black soap as a sticker, sunset spraying).\n"
     "4. preventative_cultural_practices: 3-4 proactive habits (crop roguing, ash water tool cleaning, spacing).\n"
-    "5. local_market_substitutes: 3-4 accessible substitutes (wood ash, chili-garlic, pawpaw leaf ferment).\n\n"
+    "5. local_market_substitutes: 3-4 accessible substitutes (wood ash, chili-garlic, pawpaw leaf ferment).\n"
+    "6. NON-LEAF / RETAKE CASES: If crop_name is 'unknown' or disease_detected indicates 'No crop leaf detected' "
+    "(or if the photo is of a non-crop object like a book, tool, wall, or person), DO NOT prescribe agricultural sprays, "
+    "neem, wood ash, or roguing. Instead, kindly and warmly inform the farmer in their language that the picture does not "
+    "show a crop leaf, and provide clear step-by-step guidance on how to take a clear, well-lit photo of an actual crop leaf in the field.\n\n"
     "Return STRICT JSON ONLY, no markdown. Schema: { 'detected_language': 'english'|'pidgin'|'hausa'|'yoruba'|'igbo', "
     "'spoken_reply': string, 'step_by_step_instructions': [string], "
     "'preventative_cultural_practices': [string], 'local_market_substitutes': [string] }"
@@ -76,8 +80,85 @@ ADVISOR_SYSTEM = (
 
 
 def _mock_advisory(query: str, lang: Lang, ctx: Optional[dict]) -> AdvisoryResponse:
-    crop = (ctx or {}).get("crop_name", "cassava").capitalize()
-    raw_disease = (ctx or {}).get("disease_detected", "Cassava Mosaic Disease")
+    crop_raw = str((ctx or {}).get("crop_name", "cassava")).strip().lower()
+    raw_disease = str((ctx or {}).get("disease_detected", "Cassava Mosaic Disease")).strip()
+    is_non_leaf = (
+        crop_raw in ("unknown", "other", "none", "not_a_leaf", "non_leaf")
+        or "no crop leaf" in raw_disease.lower()
+        or "no leaf" in raw_disease.lower()
+        or "not a leaf" in raw_disease.lower()
+        or "not a crop" in raw_disease.lower()
+    )
+
+    if is_non_leaf:
+        spoken_replies_non_leaf = {
+            "pidgin": (
+                "How body my person! I no see any crop leaf for this photo wey you snap. "
+                "Abeg snap clear photo of your farm crop leaf make I fit check the sickness for you."
+            ),
+            "hausa": (
+                "Sannu abokina manomi! Ban ga ganyen amfanin gona a wannan hoton ba. "
+                "Da fatan za a dauki hoton ganye mai kyau don samun magani da shawarwari."
+            ),
+            "yoruba": (
+                "Ẹ ku ojumo ore mi agbẹ! Mi o ri ewe kankan ninu aworan yi. "
+                "Ẹ jọwọ ya aworan ewe oko yin daadaa ki n le ran yin lọwọ pelu ogun to peye."
+            ),
+            "igbo": (
+                "Nnọọ nwanne m onye ọrụ ugbo! Ahụghị m akwụkwọ ihe ubi ọ bụla na foto a. "
+                "Biko sere foto doro anya nke akwụkwọ ugbo gị ka m nwee ike inyere gị aka."
+            ),
+            "english": (
+                "Hello my friend! No crop leaf was detected in this photo. "
+                "Please take a clear, well-lit photo of an actual crop leaf so I can identify the disease and guide you."
+            ),
+        }
+        instructions_non_leaf = {
+            "pidgin": [
+                "Go your farm go look the exact crop plant (Cassava, Maize, Yam, Tomato) wey get problem.",
+                "Hold your phone camera close to the leaf blade (about 20 to 30 cm) under normal daylight.",
+                "Make sure na the leaf dey show well-well, no let book, wall, or dark shadow cover am.",
+            ],
+            "hausa": [
+                "Je gonarka ka nemi ainihin ganyen da ke da matsala (Rogo, Masara, Doya, Tumatir).",
+                "Kusantar da wayarka kusa da ganyen a cikin hasken rana na halitta.",
+                "Tabbatar ganyen yana bayyana sarai ba tare da wani abu daban ya rufe shi ba.",
+            ],
+            "yoruba": [
+                "Ẹ lọ sinu oko yin ki ẹ wa ewe to n ṣaisan gangan (Gbaguda, Agbado, Isu, Tomato).",
+                "Ẹ mu foonu yin sunmọ ewe naa daadaa labẹ imọlẹ ọjọ to mọ tọrọ.",
+                "Ẹ rii daju pe ewe naa han kedere lai si nkan miran to bo o tabi iboji to le.",
+            ],
+            "igbo": [
+                "Gaa n'ugbo gị wee chọta ezigbo akwụkwọ osisi na-arịa ọrịa (Akpụ, Ọka, Ji, Tọmatọ).",
+                "Jide igwefoto ekwentị gị nso n'akwụkwọ ahụ n'okpuru ìhè anyanwụ doro anya.",
+                "Hụ na akwụkwọ ahụ pụtara nke ọma na-enweghị ndo gbara ọchịchịrị ma ọ bụ ihe ọzọ na-ekpuchi ya.",
+            ],
+            "english": [
+                "Locate the affected crop plant in your field (Cassava, Maize, Yam, Tomato, etc.).",
+                "Hold your phone camera 20 to 30 cm away from a single affected leaf under natural daylight.",
+                "Ensure the leaf blade fills the frame in sharp focus without heavy shadows or non-plant objects.",
+            ],
+        }
+        preventative_non_leaf = [
+            "Wipe camera lens clean to remove dust before taking crop photos.",
+            "Photograph leaves during morning or late afternoon for even natural light.",
+            "Inspect both the top and underside of the leaf for early disease spots.",
+        ]
+        substitutes_non_leaf = [
+            "Natural daylight (avoid strong camera flash).",
+            "Clean camera lens.",
+            "Plain backing (e.g. piece of cardboard or clean hand) to help phone focus on the leaf.",
+        ]
+        return AdvisoryResponse(
+            detected_language=lang,
+            spoken_reply=spoken_replies_non_leaf[lang],
+            step_by_step_instructions=instructions_non_leaf.get(lang, instructions_non_leaf["english"]),
+            preventative_cultural_practices=preventative_non_leaf,
+            local_market_substitutes=substitutes_non_leaf,
+        )
+
+    crop = crop_raw.capitalize()
     # Clean Latin names/parentheses for spoken naturalness
     clean_disease = re.sub(r"\([^)]*\)", "", raw_disease).strip()
 

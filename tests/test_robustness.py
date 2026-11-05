@@ -324,3 +324,59 @@ def test_edge_benchmark_endpoint():
     assert "sam_2_tiny" in data
     assert data["llama_3_2_3b"]["cellular_data_consumed_bytes"] == 0
     assert data["llama_3_2_3b"]["peak_ram_mb"] > 0
+
+
+def test_reject_red_hardcover_book_image():
+    """Regression: non-leaf objects like red books must be rejected by edge validation."""
+    import io
+    import numpy as np
+    from PIL import Image
+
+    # Simulate red hardcover book on white table
+    arr = np.ones((400, 400, 3), dtype=np.uint8) * 245
+    arr[50:350, 75:325] = [170, 40, 35]
+    buf = io.BytesIO()
+    Image.fromarray(arr).save(buf, format="JPEG")
+    res = client.post("/api/v1/diagnose", files={"file": ("red_book.jpg", buf.getvalue(), "image/jpeg")})
+    assert res.status_code == 400
+    assert "No vegetative crop leaf detected" in res.json()["detail"]
+
+
+def test_non_leaf_remedies_guidance_not_pesticides():
+    """When a non-leaf is identified, remedies must provide retake guidance, never pesticides."""
+    from backend.services.crop_diagnostician import _get_remedies_for_crop
+
+    remedies = _get_remedies_for_crop("unknown", "No crop leaf detected")
+    assert len(remedies) == 3
+    titles = [r.title.lower() for r in remedies]
+    preps = [r.preparation.lower() for r in remedies]
+    all_text = " ".join(titles + preps)
+
+    # Must NOT recommend agricultural sprays/neem/ash/roguing for non-leaves
+    assert "neem" not in all_text
+    assert "wood ash" not in all_text
+    assert "roguing" not in all_text
+    # Must provide photography / retake instructions
+    assert any("photograph" in t or "photo" in t for t in titles)
+    assert any("lighting" in t or "daylight" in t for t in titles)
+
+
+def test_non_leaf_multilingual_voice_advisory():
+    """Non-leaf advisory must warmly instruct how to take a crop photo without neem/ash."""
+    req = {
+        "query": "I scanned this photo, what should I do?",
+        "language": "pidgin",
+        "diagnosis_context": {"crop_name": "unknown", "disease_detected": "No crop leaf detected"},
+    }
+    res = client.post("/api/v1/voice-advisory", json=req)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["detected_language"] == "pidgin"
+    spoken = data["spoken_reply"].lower()
+    instructions = " ".join(data["step_by_step_instructions"]).lower()
+
+    # Must politely tell user no crop leaf was detected
+    assert "crop leaf" in spoken or "leaf" in spoken
+    # Must NOT prescribe neem leaves for an unknown/non-leaf
+    assert "neem" not in instructions
+    assert "dogonyaro" not in instructions

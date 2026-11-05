@@ -305,6 +305,22 @@ REMEDY_DATABASE = {
 }
 
 
+NON_LEAF_REMEDIES = [
+    {
+        "title": "Photograph a Real Crop Leaf",
+        "preparation": "Hold the camera 20–30 cm away from an actual crop plant leaf (Cassava, Maize, Yam, Tomato, etc.). Ensure plant tissue fills the frame.",
+    },
+    {
+        "title": "Ensure Clear Natural Daylight",
+        "preparation": "Take the photo under uniform natural daytime lighting. Avoid dark shadows, strong glare, or non-plant objects in the background.",
+    },
+    {
+        "title": "Focus on Affected Foliage",
+        "preparation": "Keep your phone steady so that leaf spots, blights, or feeding damage are sharp and clearly visible for AI diagnosis.",
+    },
+]
+
+
 def encode_image_to_base64(image_bytes: bytes) -> str:
     return base64.b64encode(image_bytes).decode("utf-8")
 
@@ -312,6 +328,14 @@ def encode_image_to_base64(image_bytes: bytes) -> str:
 def _get_remedies_for_crop(crop_name: str, disease: str = "") -> List[OrganicRemedy]:
     crop_key = crop_name.lower().strip()
     disease_key = (disease or "").lower()
+    if (
+        crop_key in ("unknown", "other", "none", "not_a_leaf", "non_leaf", "object")
+        or "no crop leaf" in disease_key
+        or "no leaf" in disease_key
+        or "not a leaf" in disease_key
+        or "not a crop" in disease_key
+    ):
+        return [OrganicRemedy(**r) for r in NON_LEAF_REMEDIES]
     if "maize" in crop_key and "armyworm" in disease_key:
         return [OrganicRemedy(**r) for r in [
             REMEDY_DATABASE["maize"][1],
@@ -327,7 +351,7 @@ def _get_remedies_for_crop(crop_name: str, disease: str = "") -> List[OrganicRem
     for key in REMEDY_DATABASE:
         if key in crop_key:
             return [OrganicRemedy(**r) for r in REMEDY_DATABASE[key]]
-    if "healthy" in crop_key or crop_key in ("unknown", ""):
+    if "healthy" in crop_key:
         return [OrganicRemedy(**r) for r in REMEDY_DATABASE["maize"]]
     return [OrganicRemedy(**r) for r in REMEDY_DATABASE["cassava"]]
 
@@ -546,6 +570,7 @@ async def diagnose_image(
         "- Groundnut: Groundnut Rosette Virus, Groundnut Early Leaf Spot, Rust, Healthy Crop\n"
         "- Sweet Potato: Sweet Potato Virus Disease (SPVD), Alternaria Leaf Spot, Healthy Crop\n\n"
         "TASKS:\n"
+        "0. NON-LEAF / NON-CROP OBJECT VALIDATION: If the image does not contain an actual crop leaf (e.g., books, hardcover notebooks, documents, phones, hands, people, furniture, tools, walls, animals), set 'is_leaf': false, 'crop_name': 'unknown', 'disease_detected': 'No crop leaf detected', 'confidence': 0.05, 'damage_percentage': 0, 'severity': 'low', and explicitly state the observed non-crop object in 'symptoms'. NEVER classify books or everyday objects as crops or diseases.\n"
         "1. Identify the crop species accurately from the foliar architecture in the photo.\n"
         "2. Detect the exact pathology (or confirm Healthy Crop) from visible lesions, pustules, mottling, or feeding holes.\n"
         "3. Estimate realistic damage_percentage (0 to 100) and severity ('low', 'moderate', or 'severe').\n"
@@ -553,8 +578,9 @@ async def diagnose_image(
         "OUTPUT FORMAT: Return STRICT JSON ONLY without markdown fences or additional conversational text.\n"
         "Schema:\n"
         "{\n"
-        '  "crop_name": "<cassava|maize|tomato|yam|cowpea|sorghum|rice|pepper|okra|groundnut|sweet_potato>",\n'
-        '  "disease_detected": "<disease name or Healthy Crop>",\n'
+        '  "is_leaf": true,\n'
+        '  "crop_name": "<cassava|maize|tomato|yam|cowpea|sorghum|rice|pepper|okra|groundnut|sweet_potato|unknown>",\n'
+        '  "disease_detected": "<disease name, Healthy Crop, or No crop leaf detected>",\n'
         '  "confidence": 0.85,\n'
         '  "damage_percentage": 30,\n'
         '  "severity": "low|moderate|severe",\n'
@@ -600,35 +626,64 @@ async def diagnose_image(
                     content = _extract_message_content(data["choices"][0])
                     parsed = _extract_json(content)
 
-                    # Extract and normalize detected crop
-                    raw_crop = str(parsed.get("crop_name", edge_probe.crop_name)).strip().lower().replace(" ", "_")
-                    if "corn" in raw_crop:
-                        crop_name = "maize"
-                    elif "sweet" in raw_crop:
-                        crop_name = "sweet_potato"
-                    elif "peanut" in raw_crop:
-                        crop_name = "groundnut"
-                    elif raw_crop in (
-                        "cassava", "maize", "tomato", "yam", "cowpea", "sorghum",
-                        "rice", "pepper", "okra", "groundnut", "sweet_potato"
-                    ):
-                        crop_name = raw_crop
+                    # Check non-leaf indicators from model
+                    raw_crop = str(parsed.get("crop_name", "")).strip().lower().replace(" ", "_")
+                    disease = str(parsed.get("disease_detected", "")).strip()
+                    symptoms = list(parsed.get("symptoms", [])) or list(edge_probe.symptoms)
+
+                    is_non_leaf = (
+                        parsed.get("is_leaf") is False
+                        or raw_crop in ("other", "unknown", "none", "not_a_leaf", "non_leaf", "not_crop", "not_a_crop", "object")
+                        or any(
+                            re.search(
+                                r"\b(not a (crop|leaf|plant)|no (leaf|crop|plant)|no leaf tissue|non[- ]vegetative|hardcover|book|furniture|wall|human|person|hand|table|animal|shoe)\b",
+                                str(s).lower(),
+                            )
+                            for s in symptoms
+                        )
+                        or bool(
+                            re.search(
+                                r"\b(not a (crop|leaf|plant)|no (leaf|crop|plant)|no leaf tissue|non[- ]leaf|non[- ]crop)\b",
+                                disease.lower(),
+                            )
+                        )
+                    )
+
+                    if is_non_leaf:
+                        crop_name = "unknown"
+                        disease = "No crop leaf detected"
+                        conf = min(float(parsed.get("confidence", 0.05)), 0.10)
+                        dmg = 0
+                        sev = "low"
+                        remedies = [OrganicRemedy(**r) for r in NON_LEAF_REMEDIES]
+                        needs_review = True
                     else:
-                        crop_name = edge_probe.crop_name
+                        if "corn" in raw_crop:
+                            crop_name = "maize"
+                        elif "sweet" in raw_crop:
+                            crop_name = "sweet_potato"
+                        elif "peanut" in raw_crop:
+                            crop_name = "groundnut"
+                        elif raw_crop in (
+                            "cassava", "maize", "tomato", "yam", "cowpea", "sorghum",
+                            "rice", "pepper", "okra", "groundnut", "sweet_potato"
+                        ):
+                            crop_name = raw_crop
+                        else:
+                            crop_name = edge_probe.crop_name
 
-                    disease = str(parsed.get("disease_detected", edge_probe.disease_detected)).strip()
-                    conf = float(parsed.get("confidence", 0.88))
-                    dmg = int(parsed.get("damage_percentage", edge_probe.damage_percentage))
-                    sev = str(parsed.get("severity", severity_for_damage(dmg).value)).lower()
-                    if sev not in ("low", "moderate", "severe"):
-                        sev = severity_for_damage(dmg).value
-
-                    symptoms = list(parsed.get("symptoms", edge_probe.symptoms)) or edge_probe.symptoms
-                    remedies = _get_remedies_for_crop(crop_name, disease)
+                        disease = disease or edge_probe.disease_detected
+                        conf = float(parsed.get("confidence", 0.88))
+                        dmg = int(parsed.get("damage_percentage", edge_probe.damage_percentage))
+                        sev = str(parsed.get("severity", severity_for_damage(dmg).value)).lower()
+                        if sev not in ("low", "moderate", "severe"):
+                            sev = severity_for_damage(dmg).value
+                        remedies = _get_remedies_for_crop(crop_name, disease)
+                        needs_review = conf < 0.55
 
                     hint_agree = None
                     hint_note = None
-                    if expected_crop:
+                    if expected_crop and not is_non_leaf:
                         norm_exp = expected_crop.strip().lower().replace(" ", "_")
                         hint_agree = (norm_exp == crop_name)
                         hint_note = (
@@ -647,6 +702,7 @@ async def diagnose_image(
                         organic_remedies=remedies,
                         hint_agree=hint_agree,
                         hint_note=hint_note,
+                        needs_review=needs_review,
                     )
                     out.model_used = vision_model  # type: ignore[attr-defined]
                     out.live_call = True  # type: ignore[attr-defined]
