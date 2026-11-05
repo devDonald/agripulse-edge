@@ -608,7 +608,7 @@ $('#btn-open-wa')?.addEventListener('click', () => {
   toast('Opened WhatsApp Business Cloud Channel Sandbox');
 });
 
-async function simulateWhatsAppMessage({ type, text, sample, caption }) {
+async function simulateWhatsAppMessage({ type, text, sample, caption, content_base64, previewUrl }) {
   const chatBox = $('#wa-chat-box');
   if (!chatBox) return;
 
@@ -619,7 +619,11 @@ async function simulateWhatsAppMessage({ type, text, sample, caption }) {
 
   let userContent = text || caption || 'Sent photo';
   if (type === 'image') {
-    userContent = `📸 <i>[Sent leaf photo: ${sample || 'leaf'}]</i><br>${caption || ''}`;
+    if (previewUrl) {
+      userContent = `<img src="${previewUrl}" class="wa-bubble-img" alt="Sent photo"><br>${caption || '📸 <i>Sent leaf photo</i>'}`;
+    } else {
+      userContent = `📸 <i>[Sent leaf photo: ${sample || 'leaf'}]</i><br>${caption || ''}`;
+    }
   }
   userBubble.innerHTML = `
     <div class="msg-text">${userContent}</div>
@@ -641,6 +645,7 @@ async function simulateWhatsAppMessage({ type, text, sample, caption }) {
       message_type: type,
       text_body: text || caption,
       sample_preset: sample || null,
+      content_base64: content_base64 || null,
     };
     const res = await fetch('/api/v1/whatsapp/simulate', {
       method: 'POST',
@@ -725,8 +730,50 @@ async function simulateWhatsAppMessage({ type, text, sample, caption }) {
   }
 }
 
+let pendingWaImage = null; // { base64, dataUrl, name }
+
+$('#wa-chip-upload-btn')?.addEventListener('click', () => {
+  $('#wa-image-input')?.click();
+});
+
+$('#wa-image-input')?.addEventListener('change', (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const dataUrl = ev.target.result;
+    const base64 = dataUrl.split(',')[1];
+    pendingWaImage = { base64, dataUrl, name: file.name };
+    const wrap = $('#wa-image-preview-wrap');
+    if (wrap) {
+      const img = $('#wa-image-preview-img');
+      if (img) img.src = dataUrl;
+      const nameEl = $('#wa-image-preview-name');
+      if (nameEl) nameEl.textContent = file.name;
+      wrap.hidden = false;
+    }
+    const input = $('#wa-custom-msg');
+    if (input) {
+      input.placeholder = 'Add photo caption (optional, e.g. Doctor look this leaf)...';
+      input.focus();
+    }
+  };
+  reader.readAsDataURL(file);
+});
+
+$('#wa-image-clear-btn')?.addEventListener('click', () => {
+  pendingWaImage = null;
+  const wrap = $('#wa-image-preview-wrap');
+  if (wrap) wrap.hidden = true;
+  const fileInput = $('#wa-image-input');
+  if (fileInput) fileInput.value = '';
+  const input = $('#wa-custom-msg');
+  if (input) input.placeholder = 'Type WhatsApp message or photo caption...';
+});
+
 $$('.sim-chip').forEach((chip) => {
   chip.addEventListener('click', () => {
+    if (chip.id === 'wa-chip-upload-btn') return;
     const type = chip.dataset.type;
     const text = chip.dataset.text;
     const sample = chip.dataset.sample;
@@ -737,11 +784,29 @@ $$('.sim-chip').forEach((chip) => {
 
 $('#wa-send-btn')?.addEventListener('click', () => {
   const input = $('#wa-custom-msg');
-  if (!input) return;
-  const val = input.value.trim();
-  if (!val) return;
-  input.value = '';
-  simulateWhatsAppMessage({ type: 'text', text: val });
+  const val = input ? input.value.trim() : '';
+
+  if (pendingWaImage) {
+    const imgData = pendingWaImage;
+    pendingWaImage = null;
+    const wrap = $('#wa-image-preview-wrap');
+    if (wrap) wrap.hidden = true;
+    const fileInput = $('#wa-image-input');
+    if (fileInput) fileInput.value = '';
+    if (input) {
+      input.value = '';
+      input.placeholder = 'Type WhatsApp message or photo caption...';
+    }
+    simulateWhatsAppMessage({
+      type: 'image',
+      content_base64: imgData.base64,
+      previewUrl: imgData.dataUrl,
+      caption: val,
+    });
+  } else if (val) {
+    input.value = '';
+    simulateWhatsAppMessage({ type: 'text', text: val });
+  }
 });
 
 $('#wa-custom-msg')?.addEventListener('keydown', (e) => {

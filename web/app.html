@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/site/styles.css?v=20261105c">
+  <link rel="stylesheet" href="/site/styles.css?v=20261105d">
 </head>
 <body class="workspace-body">
   <aside class="sidebar">
@@ -346,13 +346,24 @@
               <button type="button" class="sim-chip" data-type="image" data-sample="cassava_mosaic.jpg" data-caption="Doctor look this my cassava leaf">📸 Send Cassava Mosaic Photo</button>
               <button type="button" class="sim-chip" data-type="image" data-sample="maize_fall_armyworm.jpg" data-caption="Doctor worm dey chop my maize">🌽 Send Maize Armyworm Photo</button>
               <button type="button" class="sim-chip" data-type="image" data-sample="user_maize_rust.jpg" data-caption="Doctor my corn leaves get brown rust spots">🌽 Send Maize Rust Photo</button>
+              <button type="button" class="sim-chip sim-chip-upload" id="wa-chip-upload-btn">📷 Upload Custom Photo…</button>
             </div>
           </div>
 
           <div class="sim-custom-input">
-            <label for="wa-custom-msg"><span>Or type custom WhatsApp message:</span></label>
+            <label for="wa-custom-msg"><span>Or send custom WhatsApp message & photo:</span></label>
+            <div id="wa-image-preview-wrap" class="wa-image-preview-wrap" hidden>
+              <img id="wa-image-preview-img" src="" alt="Selected leaf photo">
+              <div class="wa-image-preview-info">
+                <span id="wa-image-preview-name">leaf.jpg</span>
+                <small>Ready to send — add optional caption below</small>
+              </div>
+              <button type="button" id="wa-image-clear-btn" class="wa-image-clear-btn" title="Remove attached photo">✕</button>
+            </div>
             <div class="sim-input-box">
-              <input type="text" id="wa-custom-msg" placeholder="e.g. How body, my tomato get black spots...">
+              <label for="wa-image-input" class="wa-attach-btn" title="Attach Leaf Photo" aria-label="Attach Leaf Photo">📷 <span>Photo</span></label>
+              <input type="file" id="wa-image-input" accept="image/*" style="display:none">
+              <input type="text" id="wa-custom-msg" placeholder="Type WhatsApp message or photo caption...">
               <button type="button" class="button button-dark" id="wa-send-btn">Send ↗</button>
             </div>
             <small class="sim-hint">Simulates inbound Meta Cloud API event delivered to <code>POST /api/v1/whatsapp/webhook</code></small>
@@ -468,6 +479,6 @@
     </div>
   </dialog>
 
-  <script src="/site/app.js?v=20261105c"></script>
+  <script src="/site/app.js?v=20261105d"></script>
 </body>
 </html>

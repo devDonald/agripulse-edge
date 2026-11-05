@@ -5,3 +5,7 @@ __pycache__/
 /tmp/
 sample_leaf.jpg
 *.db
+node_modules/
+.expo/
+.gradle/
+build/
